@@ -14,6 +14,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_device_bridge.const import (
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
     CONF_SOURCE_ENERGY_ENTITY_ID,
@@ -48,7 +50,10 @@ async def test_create_time_copy_is_scheduled_when_enabled(hass: HomeAssistant) -
             CONF_SOURCE_POWER_ENTITY_ID: None,
             CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
         },
-        options={},
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
     )
     entry.add_to_hass(hass)
 
@@ -165,7 +170,8 @@ async def test_history_import_uses_recorder_helper_apis(hass: HomeAssistant) -> 
             return_value={},
         ) as last_stats_mock,
         patch(
-            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
         ) as clear_stats_mock,
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
@@ -224,7 +230,8 @@ async def test_first_import_replays_from_full_available_history(hass: HomeAssist
     ]
     with (
         patch(
-            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
         ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
@@ -292,7 +299,8 @@ async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
         ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
@@ -362,7 +370,8 @@ async def test_import_keeps_only_first_leading_zero_row(hass: HomeAssistant) -> 
 
     with (
         patch(
-            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
         ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
@@ -401,7 +410,10 @@ async def test_copy_on_create_not_invoked_again_after_reload(hass: HomeAssistant
             CONF_SOURCE_POWER_ENTITY_ID: None,
             CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
         },
-        options={},
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
     )
     entry.add_to_hass(hass)
 
@@ -416,3 +428,64 @@ async def test_copy_on_create_not_invoked_again_after_reload(hass: HomeAssistant
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
         assert request_mock.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_import_clears_creation_pending_flag(hass: HomeAssistant) -> None:
+    """Successful import clears pending flag so sensor can become available."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-clear-pending",
+            CONF_CONSUMER_NAME: "Import Clear Pending",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    source_states = [
+        _MockHistoricalState(
+            state="1.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=now - timedelta(hours=2, minutes=10),
+            last_changed=now - timedelta(hours=2, minutes=10),
+        ),
+        _MockHistoricalState(
+            state="2.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=now - timedelta(hours=1, minutes=10),
+            last_changed=now - timedelta(hours=1, minutes=10),
+        ),
+    ]
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False

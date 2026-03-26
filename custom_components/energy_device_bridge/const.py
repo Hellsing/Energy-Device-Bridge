@@ -16,6 +16,7 @@ CONF_ZERO_DROP_POLICY: Final = "zero_drop_policy"
 CONF_NOTIFY_ON_LOWER_NON_ZERO: Final = "notify_on_lower_non_zero"
 CONF_COPY_SOURCE_HISTORY_ON_CREATE: Final = "copy_source_history_on_create"
 CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED: Final = "copy_source_history_on_create_invoked"
+CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: Final = "copy_source_history_on_create_pending"
 
 ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO: Final = "ignore_zero_until_non_zero"
 ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE: Final = "accept_zero_as_new_cycle"

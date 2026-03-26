@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+from time import monotonic
 from typing import Any
 
 from homeassistant.components import persistent_notification
@@ -22,6 +24,7 @@ from .const import (
     DOMAIN,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_ZERO_DROP_POLICY,
 )
 from .models import EnergyTrackerState
@@ -75,6 +78,67 @@ def _async_clear_statistics(hass: HomeAssistant, statistic_ids: list[str]) -> No
     from homeassistant.components.recorder import get_instance
 
     get_instance(hass).async_clear_statistics(statistic_ids)
+
+
+def _supports_statistics_metadata_field(field_name: str) -> bool:
+    """Return whether recorder metadata model supports a field."""
+    try:
+        from homeassistant.components.recorder.db_schema import StatisticsMeta
+    except Exception:  # noqa: BLE001 - import safety across HA versions
+        return False
+    return hasattr(StatisticsMeta, field_name)
+
+
+def _build_statistics_metadata(
+    *,
+    name: str,
+    statistic_id: str,
+) -> dict[str, Any]:
+    """Build metadata compatible with multiple Home Assistant versions."""
+    metadata: dict[str, Any] = {
+        "has_mean": False,
+        "has_sum": True,
+        "name": name,
+        "source": "recorder",
+        "statistic_id": statistic_id,
+        "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+    }
+    if _supports_statistics_metadata_field("mean_type"):
+        mean_type_none: Any = "none"
+        try:
+            from homeassistant.components.recorder.models.statistics import StatisticMeanType
+
+            mean_type_none = StatisticMeanType.NONE
+        except Exception:  # noqa: BLE001 - fallback for version differences
+            pass
+        metadata["mean_type"] = mean_type_none
+    if _supports_statistics_metadata_field("unit_class"):
+        metadata["unit_class"] = EnergyConverter.UNIT_CLASS
+    return metadata
+
+
+async def _async_clear_statistics_and_wait(
+    hass: HomeAssistant,
+    statistic_id: str,
+    *,
+    timeout_seconds: float = 30.0,
+) -> None:
+    """Clear statistics and wait until rows are no longer returned."""
+    _async_clear_statistics(hass, [statistic_id])
+    deadline = monotonic() + timeout_seconds
+    while monotonic() < deadline:
+        latest_stats = await hass.async_add_executor_job(
+            _get_last_statistics,
+            hass,
+            1,
+            statistic_id,
+            False,
+            {"sum"},
+        )
+        if not latest_stats.get(statistic_id):
+            return
+        await asyncio.sleep(0.25)
+    raise RuntimeError("Timed out waiting for recorder statistics clear operation")
 
 
 def _parse_numeric(value: Any) -> float | None:
@@ -213,6 +277,8 @@ async def async_schedule_copy_on_create(
         return
     if bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED, False)):
         return
+    if not bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)):
+        return
     tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
     if tracker.history_import_create_invoked:
         return
@@ -325,7 +391,7 @@ async def _async_run_import(
                     last_row_start = dt_util.utc_from_timestamp(latest_rows[-1]["start"])
                     import_start_hour = last_row_start + timedelta(hours=1)
         else:
-            _async_clear_statistics(hass, [bridge_entity_id])
+            await _async_clear_statistics_and_wait(hass, bridge_entity_id)
 
         history_data = await hass.async_add_executor_job(
             _state_changes_during_period,
@@ -345,14 +411,10 @@ async def _async_run_import(
             current_hour_start,
         )
         if stats_rows:
-            metadata = {
-                "has_mean": False,
-                "has_sum": True,
-                "name": entry.title,
-                "source": "recorder",
-                "statistic_id": bridge_entity_id,
-                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
-            }
+            metadata = _build_statistics_metadata(
+                name=entry.title,
+                statistic_id=bridge_entity_id,
+            )
             _async_import_statistics(hass, metadata, stats_rows)
 
         if source_states and tracker.history_import_has_run:
@@ -386,6 +448,15 @@ async def _async_run_import(
                 tracker.last_source_energy_value_kwh = source_kwh
                 tracker.last_valid_source_sample_ts = now_iso
                 tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+
+            if bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)):
+                hass.config_entries.async_update_entry(
+                    entry,
+                    options={
+                        **entry.options,
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: False,
+                    },
+                )
 
         tracker.history_import_in_progress = False
         tracker.history_import_has_run = True

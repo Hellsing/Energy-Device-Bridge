@@ -57,6 +57,7 @@ from .const import (
     ATTR_ZERO_DROP_COUNT,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_ZERO_DROP_POLICY,
     DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
     DEFAULT_ZERO_DROP_POLICY,
@@ -303,6 +304,11 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             [self._source_entity_id],
             self._async_handle_source_change,
         )
+        # For creation-time backfill, keep sensor unavailable until initial import finishes.
+        if self._is_waiting_for_initial_history_import:
+            self._attr_available = False
+            self.async_write_ha_state()
+            return
         # Process current source state as an immediate baseline/update.
         self._async_process_source_state()
         self.async_write_ha_state()
@@ -325,6 +331,9 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
     @callback
     def _async_process_source_state(self) -> None:
         """Apply required non-decreasing accumulation algorithm."""
+        if self._is_waiting_for_initial_history_import:
+            self._attr_available = False
+            return
         source_state = self.hass.states.get(self._source_entity_id)
         if source_state is None:
             self._attr_available = False
@@ -502,8 +511,17 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         """Replace runtime tracker state after history import."""
         self._tracker = EnergyTrackerState.from_dict(state.as_dict())
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
+        self._attr_available = True
         self._schedule_save()
         self.async_write_ha_state()
+
+    @property
+    def _is_waiting_for_initial_history_import(self) -> bool:
+        return bool(
+            self._entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True)
+            and self._entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)
+            and not self._tracker.history_import_has_run
+        )
 
     @property
     def runtime_diagnostics(self) -> dict[str, Any]:

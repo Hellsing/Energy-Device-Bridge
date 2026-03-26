@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.helpers import device_registry as dr
@@ -93,8 +94,12 @@ async def test_setup_unload_and_remove_entry(hass) -> None:
     assert hass.states.get(power_entity_id).state == "unavailable"
     assert hass.states.get(energy_entity_id).state == "unavailable"
 
-    assert await hass.config_entries.async_remove(entry.entry_id)
-    await hass.async_block_till_done()
+    with patch(
+        "custom_components.energy_device_bridge._async_clear_bridge_statistics_for_entry"
+    ) as clear_stats_mock:
+        assert await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+        assert clear_stats_mock.called
 
 
 @pytest.mark.asyncio

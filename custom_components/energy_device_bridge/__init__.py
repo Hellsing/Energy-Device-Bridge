@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+import logging
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
@@ -33,6 +34,8 @@ from .store import EnergyDeviceBridgeStore
 
 if TYPE_CHECKING:
     from .sensor import EnergyDeviceBridgeEnergySensor
+
+_LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -273,7 +276,38 @@ async def async_unload_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfi
 
 async def async_remove_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> None:
     """Remove config entry and persisted metadata."""
+    _async_clear_bridge_statistics_for_entry(hass, entry)
     await EnergyDeviceBridgeStore(hass, entry.entry_id).async_remove()
+
+
+def _async_clear_bridge_statistics_for_entry(
+    hass: HomeAssistant,
+    entry: EnergyDeviceBridgeConfigEntry,
+) -> None:
+    """Best-effort clear of bridge long-term statistics for removed entry."""
+    try:
+        entity_id: str | None = None
+        runtime_data = getattr(entry, "runtime_data", None)
+        if runtime_data is not None and runtime_data.energy_sensor is not None:
+            entity_id = runtime_data.energy_sensor.entity_id
+        if entity_id is None:
+            consumer = resolve_consumer_config(entry.data)
+            entity_id = er.async_get(hass).async_get_entity_id(
+                "sensor",
+                DOMAIN,
+                f"{consumer.consumer_uuid}_energy",
+            )
+        if entity_id is None:
+            return
+        from homeassistant.components.recorder import get_instance
+
+        get_instance(hass).async_clear_statistics([entity_id])
+    except Exception:  # noqa: BLE001 - do not block entry removal
+        _LOGGER.debug(
+            "Unable to clear recorder statistics while removing entry %s",
+            entry.entry_id,
+            exc_info=True,
+        )
 
 
 async def async_remove_config_entry_device(

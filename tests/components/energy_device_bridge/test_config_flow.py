@@ -18,6 +18,7 @@ from custom_components.energy_device_bridge.const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
@@ -66,6 +67,7 @@ async def test_config_flow_happy_path(hass: HomeAssistant) -> None:
     assert result["options"][CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
     assert result["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
     assert result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
+    assert result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING] is True
 
 
 @pytest.mark.asyncio
@@ -94,6 +96,7 @@ async def test_config_flow_accepts_missing_power_source(hass: HomeAssistant) -> 
         result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE]
         == DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
     )
+    assert result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING] is True
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,8 @@ from custom_components.energy_device_bridge.const import (
     ATTR_VALUE_KWH,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
@@ -354,6 +356,44 @@ async def test_setup_without_power_source_only_creates_energy_sensor(hass: HomeA
     )
     assert power_entity_id is None
     assert energy_entity_id is not None
+
+
+async def test_energy_sensor_unavailable_while_initial_history_import_pending(
+    hass: HomeAssistant,
+) -> None:
+    """Creation-time import pending keeps bridge sensor unavailable."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-pending-import",
+            CONF_CONSUMER_NAME: "Pending Import",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+            CONF_ZERO_DROP_POLICY: DEFAULT_ZERO_DROP_POLICY,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-pending-import_energy"
+    )
+    assert energy_entity_id is not None
+    energy_state = hass.states.get(energy_entity_id)
+    assert energy_state is not None
+    assert energy_state.state == STATE_UNAVAILABLE
 
 
 async def test_adopt_current_source_as_baseline_does_not_change_virtual_total(

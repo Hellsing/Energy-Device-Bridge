@@ -31,6 +31,7 @@ from .const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
@@ -345,6 +346,9 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
                         CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
                         CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
+                            selected_copy_source_history_on_create
+                        ),
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: (
                             selected_copy_source_history_on_create
                         ),
                     },
