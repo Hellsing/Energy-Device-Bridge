@@ -273,6 +273,7 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, Any]:
         """Handle config entry reconfiguration."""
         entry = self._resolve_reconfigure_entry()
+        entry_unique_id = entry.unique_id or entry.data.get(CONF_CONSUMER_UUID)
         defaults = resolve_consumer_config(entry.data)
         errors: dict[str, str] = {}
 
@@ -284,8 +285,10 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 skip_entry_id=entry.entry_id,
             )
             if not result.errors and result.validated_data:
-                await self.async_set_unique_id(entry.data[CONF_CONSUMER_UUID])
-                self._abort_if_unique_id_mismatch_if_supported()
+                if entry_unique_id is not None:
+                    await self.async_set_unique_id(entry_unique_id)
+                if entry.unique_id is not None:
+                    self._abort_if_unique_id_mismatch_if_supported()
                 _LOGGER.debug("Reconfiguring Energy Device Bridge entry %s", entry.entry_id)
                 try:
                     return self.async_update_reload_and_abort(

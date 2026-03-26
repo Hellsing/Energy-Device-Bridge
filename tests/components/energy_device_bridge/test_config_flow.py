@@ -134,6 +134,7 @@ async def test_reconfigure_flow_updates_data(hass: HomeAssistant) -> None:
     )
     assert done["type"] is FlowResultType.ABORT
     assert done["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_CONSUMER_UUID] == "consumer-1"
     assert entry.data[CONF_CONSUMER_NAME] == "Updated"
     assert entry.data[CONF_SOURCE_ENERGY_ENTITY_ID] == "sensor.e2"
 
