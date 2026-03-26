@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-03-26
+
+- Add pending copy flag and clear recorder stats (5c92759)
+- Merge branch 'main' of https://github.com/Hellsing/Energy-Device-Bridge (46e99e5)
+- Fixed history import with 0 kWh entries after creation (c56c324)
+
 ## 1.0.0 - 2026-03-26
 
 - Changed to manual release action (809e07f)
