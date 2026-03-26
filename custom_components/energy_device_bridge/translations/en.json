@@ -6,7 +6,7 @@
         "description": "Create an Energy Device Bridge virtual consumer with a persistent Energy Dashboard total and swappable source entities.",
         "data": {
           "consumer_name": "Consumer name",
-          "source_power_entity_id": "Source power sensor",
+          "source_power_entity_id": "Source power sensor (optional)",
           "source_energy_entity_id": "Source energy sensor"
         }
       },
@@ -15,7 +15,7 @@
         "description": "Update this Energy Device Bridge consumer while preserving historical energy continuity.",
         "data": {
           "consumer_name": "Consumer name",
-          "source_power_entity_id": "Source power sensor",
+          "source_power_entity_id": "Source power sensor (optional)",
           "source_energy_entity_id": "Source energy sensor"
         }
       }

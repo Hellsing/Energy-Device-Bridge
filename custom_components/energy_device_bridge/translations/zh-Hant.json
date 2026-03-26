@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "建立虛擬用電裝置",
+        "description": "建立一個 Energy Device Bridge 虛擬用電裝置，提供可持久化的「能源」面板總量，並支援更換來源實體。",
+        "data": {
+          "consumer_name": "裝置名稱",
+          "source_power_entity_id": "來源功率感測器（選用）",
+          "source_energy_entity_id": "來源能量感測器"
+        }
+      },
+      "reconfigure": {
+        "title": "重新設定虛擬用電裝置",
+        "description": "在保留歷史能量連續性的同時，更新此 Energy Device Bridge 用電裝置。",
+        "data": {
+          "consumer_name": "裝置名稱",
+          "source_power_entity_id": "來源功率感測器（選用）",
+          "source_energy_entity_id": "來源能量感測器"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "此功率/能量來源組合已被使用。",
+      "entity_not_found": "所選實體不存在。",
+      "must_be_sensor": "所選實體必須是感測器。",
+      "name_required": "請提供名稱。",
+      "same_entity_pair": "功率與能量實體必須不同。",
+      "power_not_numeric": "功率來源必須為數值。",
+      "energy_not_numeric": "能量來源必須為數值。",
+      "invalid_power_unit": "功率來源單位必須為 W 或 kW。",
+      "invalid_energy_unit": "能量來源單位必須為 Wh 或 kWh。",
+      "invalid_energy_state_class": "能量來源應使用 total 或 total_increasing 的 state_class。"
+    },
+    "abort": {
+      "reconfigure_successful": "設定已更新。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "設定虛擬用電裝置",
+        "description": "在設定選單中更新此 Energy Device Bridge 用電裝置。",
+        "data": {
+          "consumer_name": "裝置名稱",
+          "source_power_entity_id": "來源功率感測器（選用）",
+          "source_energy_entity_id": "來源能量感測器"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "此功率/能量來源組合已被使用。",
+      "entity_not_found": "所選實體不存在。",
+      "must_be_sensor": "所選實體必須是感測器。",
+      "name_required": "請提供名稱。",
+      "same_entity_pair": "功率與能量實體必須不同。",
+      "power_not_numeric": "功率來源必須為數值。",
+      "energy_not_numeric": "能量來源必須為數值。",
+      "invalid_power_unit": "功率來源單位必須為 W 或 kW。",
+      "invalid_energy_unit": "能量來源單位必須為 Wh 或 kWh。",
+      "invalid_energy_state_class": "能量來源應使用 total 或 total_increasing 的 state_class。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "功率"
+      },
+      "energy": {
+        "name": "能量"
+      }
+    }
+  }
+}

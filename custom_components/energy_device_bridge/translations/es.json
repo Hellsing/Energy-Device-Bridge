@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Crear consumidor virtual",
+        "description": "Crea un consumidor virtual de Energy Device Bridge con un total persistente en el panel de Energía y entidades de origen intercambiables.",
+        "data": {
+          "consumer_name": "Nombre del consumidor",
+          "source_power_entity_id": "Sensor de potencia de origen (opcional)",
+          "source_energy_entity_id": "Sensor de energía de origen"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar consumidor virtual",
+        "description": "Actualiza este consumidor de Energy Device Bridge manteniendo la continuidad histórica de la energía.",
+        "data": {
+          "consumer_name": "Nombre del consumidor",
+          "source_power_entity_id": "Sensor de potencia de origen (opcional)",
+          "source_energy_entity_id": "Sensor de energía de origen"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Este par de fuentes de potencia/energía ya se está utilizando.",
+      "entity_not_found": "La entidad seleccionada no existe.",
+      "must_be_sensor": "La entidad seleccionada debe ser un sensor.",
+      "name_required": "Indica un nombre.",
+      "same_entity_pair": "Las entidades de potencia y energía deben ser distintas.",
+      "power_not_numeric": "La fuente de potencia debe tener valores numéricos.",
+      "energy_not_numeric": "La fuente de energía debe tener valores numéricos.",
+      "invalid_power_unit": "La unidad de la fuente de potencia debe ser W o kW.",
+      "invalid_energy_unit": "La unidad de la fuente de energía debe ser Wh o kWh.",
+      "invalid_energy_state_class": "La fuente de energía debería usar la clase de estado total o total_increasing."
+    },
+    "abort": {
+      "reconfigure_successful": "Se actualizó la configuración."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurar consumidor virtual",
+        "description": "Actualiza este consumidor de Energy Device Bridge desde el menú de configuración.",
+        "data": {
+          "consumer_name": "Nombre del consumidor",
+          "source_power_entity_id": "Sensor de potencia de origen (opcional)",
+          "source_energy_entity_id": "Sensor de energía de origen"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Este par de fuentes de potencia/energía ya se está utilizando.",
+      "entity_not_found": "La entidad seleccionada no existe.",
+      "must_be_sensor": "La entidad seleccionada debe ser un sensor.",
+      "name_required": "Indica un nombre.",
+      "same_entity_pair": "Las entidades de potencia y energía deben ser distintas.",
+      "power_not_numeric": "La fuente de potencia debe tener valores numéricos.",
+      "energy_not_numeric": "La fuente de energía debe tener valores numéricos.",
+      "invalid_power_unit": "La unidad de la fuente de potencia debe ser W o kW.",
+      "invalid_energy_unit": "La unidad de la fuente de energía debe ser Wh o kWh.",
+      "invalid_energy_state_class": "La fuente de energía debería usar la clase de estado total o total_increasing."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Potencia"
+      },
+      "energy": {
+        "name": "Energía"
+      }
+    }
+  }
+}

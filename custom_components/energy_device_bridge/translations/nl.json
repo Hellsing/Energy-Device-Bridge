@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Virtuele verbruiker maken",
+        "description": "Maak een virtuele verbruiker van Energy Device Bridge met een blijvend totaal voor het Energiedashboard en verwisselbare bronentiteiten.",
+        "data": {
+          "consumer_name": "Naam van de verbruiker",
+          "source_power_entity_id": "Bronvermogenssensor (optioneel)",
+          "source_energy_entity_id": "Bronenergiesensor"
+        }
+      },
+      "reconfigure": {
+        "title": "Virtuele verbruiker opnieuw configureren",
+        "description": "Werk deze Energy Device Bridge-verbruiker bij terwijl de historische energiecontinuïteit behouden blijft.",
+        "data": {
+          "consumer_name": "Naam van de verbruiker",
+          "source_power_entity_id": "Bronvermogenssensor (optioneel)",
+          "source_energy_entity_id": "Bronenergiesensor"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Dit bronpaar vermogen/energie wordt al gebruikt.",
+      "entity_not_found": "De geselecteerde entiteit bestaat niet.",
+      "must_be_sensor": "De geselecteerde entiteit moet een sensor zijn.",
+      "name_required": "Geef een naam op.",
+      "same_entity_pair": "De vermogens- en energie-entiteiten moeten verschillend zijn.",
+      "power_not_numeric": "De vermogensbron moet numerieke waarden hebben.",
+      "energy_not_numeric": "De energiebron moet numerieke waarden hebben.",
+      "invalid_power_unit": "De eenheid van de vermogensbron moet W of kW zijn.",
+      "invalid_energy_unit": "De eenheid van de energiebron moet Wh of kWh zijn.",
+      "invalid_energy_state_class": "De energiebron moet de state_class total of total_increasing gebruiken."
+    },
+    "abort": {
+      "reconfigure_successful": "De configuratie is bijgewerkt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Virtuele verbruiker configureren",
+        "description": "Werk deze Energy Device Bridge-verbruiker bij via het configuratiemenu.",
+        "data": {
+          "consumer_name": "Naam van de verbruiker",
+          "source_power_entity_id": "Bronvermogenssensor (optioneel)",
+          "source_energy_entity_id": "Bronenergiesensor"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Dit bronpaar vermogen/energie wordt al gebruikt.",
+      "entity_not_found": "De geselecteerde entiteit bestaat niet.",
+      "must_be_sensor": "De geselecteerde entiteit moet een sensor zijn.",
+      "name_required": "Geef een naam op.",
+      "same_entity_pair": "De vermogens- en energie-entiteiten moeten verschillend zijn.",
+      "power_not_numeric": "De vermogensbron moet numerieke waarden hebben.",
+      "energy_not_numeric": "De energiebron moet numerieke waarden hebben.",
+      "invalid_power_unit": "De eenheid van de vermogensbron moet W of kW zijn.",
+      "invalid_energy_unit": "De eenheid van de energiebron moet Wh of kWh zijn.",
+      "invalid_energy_state_class": "De energiebron moet de state_class total of total_increasing gebruiken."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Vermogen"
+      },
+      "energy": {
+        "name": "Energie"
+      }
+    }
+  }
+}

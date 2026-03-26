@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Criar consumidor virtual",
+        "description": "Crie um consumidor virtual do Energy Device Bridge com um total persistente no Painel de Energia e entidades de origem substituíveis.",
+        "data": {
+          "consumer_name": "Nome do consumidor",
+          "source_power_entity_id": "Sensor de potência de origem (opcional)",
+          "source_energy_entity_id": "Sensor de energia de origem"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar consumidor virtual",
+        "description": "Atualize este consumidor do Energy Device Bridge preservando a continuidade histórica de energia.",
+        "data": {
+          "consumer_name": "Nome do consumidor",
+          "source_power_entity_id": "Sensor de potência de origem (opcional)",
+          "source_energy_entity_id": "Sensor de energia de origem"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Este par de fontes de potência/energia já está em uso.",
+      "entity_not_found": "A entidade selecionada não existe.",
+      "must_be_sensor": "A entidade selecionada deve ser um sensor.",
+      "name_required": "Informe um nome.",
+      "same_entity_pair": "As entidades de potência e energia devem ser diferentes.",
+      "power_not_numeric": "A fonte de potência deve ter valores numéricos.",
+      "energy_not_numeric": "A fonte de energia deve ter valores numéricos.",
+      "invalid_power_unit": "A unidade da fonte de potência deve ser W ou kW.",
+      "invalid_energy_unit": "A unidade da fonte de energia deve ser Wh ou kWh.",
+      "invalid_energy_state_class": "A fonte de energia deve usar state_class total ou total_increasing."
+    },
+    "abort": {
+      "reconfigure_successful": "A configuração foi atualizada."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurar consumidor virtual",
+        "description": "Atualize este consumidor do Energy Device Bridge pelo menu de configuração.",
+        "data": {
+          "consumer_name": "Nome do consumidor",
+          "source_power_entity_id": "Sensor de potência de origem (opcional)",
+          "source_energy_entity_id": "Sensor de energia de origem"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Este par de fontes de potência/energia já está em uso.",
+      "entity_not_found": "A entidade selecionada não existe.",
+      "must_be_sensor": "A entidade selecionada deve ser um sensor.",
+      "name_required": "Informe um nome.",
+      "same_entity_pair": "As entidades de potência e energia devem ser diferentes.",
+      "power_not_numeric": "A fonte de potência deve ter valores numéricos.",
+      "energy_not_numeric": "A fonte de energia deve ter valores numéricos.",
+      "invalid_power_unit": "A unidade da fonte de potência deve ser W ou kW.",
+      "invalid_energy_unit": "A unidade da fonte de energia deve ser Wh ou kWh.",
+      "invalid_energy_state_class": "A fonte de energia deve usar state_class total ou total_increasing."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Potência"
+      },
+      "energy": {
+        "name": "Energia"
+      }
+    }
+  }
+}

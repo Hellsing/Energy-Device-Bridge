@@ -6,7 +6,7 @@
         "description": "Erstelle eine Energy Device Bridge mit einem persistenten Gesamtwert für das Energie-Dashboard und austauschbaren Quell-Entitäten.",
         "data": {
           "consumer_name": "Name des Verbrauchers",
-          "source_power_entity_id": "Quell-Leistungssensor",
+          "source_power_entity_id": "Quell-Leistungssensor (optional)",
           "source_energy_entity_id": "Quell-Energiesensor"
         }
       },
@@ -15,7 +15,7 @@
         "description": "Aktualisiere diesen Energy Device Bridge-Verbraucher, ohne die bisherige Energiehistorie zu verlieren.",
         "data": {
           "consumer_name": "Name des Verbrauchers",
-          "source_power_entity_id": "Quell-Leistungssensor",
+          "source_power_entity_id": "Quell-Leistungssensor (optional)",
           "source_energy_entity_id": "Quell-Energiesensor"
         }
       }

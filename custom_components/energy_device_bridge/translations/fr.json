@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Créer un consommateur virtuel",
+        "description": "Crée un consommateur virtuel Energy Device Bridge avec un total persistant dans le tableau de bord Énergie et des entités source interchangeables.",
+        "data": {
+          "consumer_name": "Nom du consommateur",
+          "source_power_entity_id": "Capteur de puissance source (facultatif)",
+          "source_energy_entity_id": "Capteur d'énergie source"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer le consommateur virtuel",
+        "description": "Met à jour ce consommateur Energy Device Bridge tout en préservant la continuité historique de l'énergie.",
+        "data": {
+          "consumer_name": "Nom du consommateur",
+          "source_power_entity_id": "Capteur de puissance source (facultatif)",
+          "source_energy_entity_id": "Capteur d'énergie source"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Cette paire de sources puissance/énergie est déjà utilisée.",
+      "entity_not_found": "L'entité sélectionnée est introuvable.",
+      "must_be_sensor": "L'entité sélectionnée doit être un capteur.",
+      "name_required": "Veuillez fournir un nom.",
+      "same_entity_pair": "Les entités de puissance et d'énergie doivent être différentes.",
+      "power_not_numeric": "La source de puissance doit avoir des valeurs numériques.",
+      "energy_not_numeric": "La source d'énergie doit avoir des valeurs numériques.",
+      "invalid_power_unit": "L'unité de la source de puissance doit être W ou kW.",
+      "invalid_energy_unit": "L'unité de la source d'énergie doit être Wh ou kWh.",
+      "invalid_energy_state_class": "La source d'énergie doit utiliser une classe d'état total ou total_increasing."
+    },
+    "abort": {
+      "reconfigure_successful": "La configuration a été mise à jour."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurer le consommateur virtuel",
+        "description": "Met à jour ce consommateur Energy Device Bridge depuis le menu de configuration.",
+        "data": {
+          "consumer_name": "Nom du consommateur",
+          "source_power_entity_id": "Capteur de puissance source (facultatif)",
+          "source_energy_entity_id": "Capteur d'énergie source"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Cette paire de sources puissance/énergie est déjà utilisée.",
+      "entity_not_found": "L'entité sélectionnée est introuvable.",
+      "must_be_sensor": "L'entité sélectionnée doit être un capteur.",
+      "name_required": "Veuillez fournir un nom.",
+      "same_entity_pair": "Les entités de puissance et d'énergie doivent être différentes.",
+      "power_not_numeric": "La source de puissance doit avoir des valeurs numériques.",
+      "energy_not_numeric": "La source d'énergie doit avoir des valeurs numériques.",
+      "invalid_power_unit": "L'unité de la source de puissance doit être W ou kW.",
+      "invalid_energy_unit": "L'unité de la source d'énergie doit être Wh ou kWh.",
+      "invalid_energy_state_class": "La source d'énergie doit utiliser une classe d'état total ou total_increasing."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Puissance"
+      },
+      "energy": {
+        "name": "Énergie"
+      }
+    }
+  }
+}

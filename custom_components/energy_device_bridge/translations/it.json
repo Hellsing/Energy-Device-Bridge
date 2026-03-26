@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Crea consumatore virtuale",
+        "description": "Crea un consumatore virtuale di Energy Device Bridge con un totale persistente nel pannello Energia ed entità sorgente sostituibili.",
+        "data": {
+          "consumer_name": "Nome del consumatore",
+          "source_power_entity_id": "Sensore di potenza sorgente (facoltativo)",
+          "source_energy_entity_id": "Sensore di energia sorgente"
+        }
+      },
+      "reconfigure": {
+        "title": "Riconfigura consumatore virtuale",
+        "description": "Aggiorna questo consumatore di Energy Device Bridge mantenendo la continuità storica dell'energia.",
+        "data": {
+          "consumer_name": "Nome del consumatore",
+          "source_power_entity_id": "Sensore di potenza sorgente (facoltativo)",
+          "source_energy_entity_id": "Sensore di energia sorgente"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Questa coppia di sorgenti potenza/energia è già in uso.",
+      "entity_not_found": "L'entità selezionata non esiste.",
+      "must_be_sensor": "L'entità selezionata deve essere un sensore.",
+      "name_required": "Inserisci un nome.",
+      "same_entity_pair": "Le entità di potenza ed energia devono essere diverse.",
+      "power_not_numeric": "La sorgente di potenza deve avere valori numerici.",
+      "energy_not_numeric": "La sorgente di energia deve avere valori numerici.",
+      "invalid_power_unit": "L'unità della sorgente di potenza deve essere W o kW.",
+      "invalid_energy_unit": "L'unità della sorgente di energia deve essere Wh o kWh.",
+      "invalid_energy_state_class": "La sorgente di energia dovrebbe usare la classe di stato total o total_increasing."
+    },
+    "abort": {
+      "reconfigure_successful": "La configurazione è stata aggiornata."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configura consumatore virtuale",
+        "description": "Aggiorna questo consumatore di Energy Device Bridge dal menu di configurazione.",
+        "data": {
+          "consumer_name": "Nome del consumatore",
+          "source_power_entity_id": "Sensore di potenza sorgente (facoltativo)",
+          "source_energy_entity_id": "Sensore di energia sorgente"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "Questa coppia di sorgenti potenza/energia è già in uso.",
+      "entity_not_found": "L'entità selezionata non esiste.",
+      "must_be_sensor": "L'entità selezionata deve essere un sensore.",
+      "name_required": "Inserisci un nome.",
+      "same_entity_pair": "Le entità di potenza ed energia devono essere diverse.",
+      "power_not_numeric": "La sorgente di potenza deve avere valori numerici.",
+      "energy_not_numeric": "La sorgente di energia deve avere valori numerici.",
+      "invalid_power_unit": "L'unità della sorgente di potenza deve essere W o kW.",
+      "invalid_energy_unit": "L'unità della sorgente di energia deve essere Wh o kWh.",
+      "invalid_energy_state_class": "La sorgente di energia dovrebbe usare la classe di stato total o total_increasing."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Potenza"
+      },
+      "energy": {
+        "name": "Energia"
+      }
+    }
+  }
+}
