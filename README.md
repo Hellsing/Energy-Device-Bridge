@@ -6,14 +6,14 @@
 Energy Device Bridge is a Home Assistant helper integration that keeps an Energy Dashboard total continuous when the underlying source meter resets, rolls over, or gets replaced.
 
 Each config entry creates one virtual device with:
-- a virtual power sensor (live passthrough of the selected source power sensor)
+- an optional virtual power sensor (live passthrough when a source power sensor is configured)
 - a virtual cumulative energy sensor (non-decreasing total in kWh)
 
 ## Features
 
 - UI-based setup through Home Assistant config entries
 - Stable entity unique IDs per configured consumer
-- Reconfigure flow for changing the source entities and consumer name
+- Configuration flow for changing sources/name from the integration gear menu
 - Persistent energy accumulation state across reloads and restarts
 - Source energy normalization to kWh (`Wh` and `kWh` supported)
 - Diagnostics download with redacted user/source details
@@ -39,14 +39,14 @@ Each config entry creates one virtual device with:
 
 During setup, provide:
 - **Consumer name**
-- **Source power sensor** (must be a sensor with `W` or `kW`)
+- **Source power sensor** (optional, must be a sensor with `W` or `kW` when configured)
 - **Source energy sensor** (must be a sensor with `Wh` or `kWh`)
 
-If setup inputs need to change later, use **Reconfigure** from the integration entry.
+If setup inputs need to change later, use the integration **Configure** gear icon.
 
 ## Entity behavior
 
-- **Power sensor**: mirrors current source power, normalized to `kW`.
+- **Power sensor**: mirrors current source power, normalized to `kW` (only created when a source power sensor is configured).
 - **Energy sensor**: stores a virtual cumulative total in `kWh` and only adds positive deltas from the source.
 
 Accumulation logic:

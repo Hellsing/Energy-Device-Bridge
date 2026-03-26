@@ -92,7 +92,10 @@ class EnergyDeviceBridgePowerSensor(EnergyDeviceBridgeSensorBase):
     def __init__(self, entry: EnergyDeviceBridgeConfigEntry) -> None:
         super().__init__(entry.runtime_data.consumer)
         self._entry = entry
-        self._source_entity_id = entry.runtime_data.consumer.source_power_entity_id
+        source_entity_id = entry.runtime_data.consumer.source_power_entity_id
+        if source_entity_id is None:
+            raise ValueError("Power source entity is required for power sensor setup")
+        self._source_entity_id = source_entity_id
         self._unsub_source: Callable[[], None] | None = None
         self._attr_unique_id = f"{self._consumer.consumer_uuid}_power"
         self._attr_device_info = entry.runtime_data.device_info
@@ -270,9 +273,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Energy Device Bridge sensors from config entry."""
-    async_add_entities(
-        [
-            EnergyDeviceBridgePowerSensor(entry),
-            EnergyDeviceBridgeEnergySensor(entry),
-        ]
-    )
+    entities: list[SensorEntity] = [EnergyDeviceBridgeEnergySensor(entry)]
+    if entry.runtime_data.consumer.source_power_entity_id:
+        entities.insert(0, EnergyDeviceBridgePowerSensor(entry))
+    async_add_entities(entities)

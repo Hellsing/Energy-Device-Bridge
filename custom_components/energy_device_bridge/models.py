@@ -22,7 +22,7 @@ class ConsumerConfig:
 
     consumer_uuid: str
     consumer_name: str
-    source_power_entity_id: str
+    source_power_entity_id: str | None
     source_energy_entity_id: str
 
 
@@ -64,6 +64,6 @@ def resolve_consumer_config(data: dict[str, Any]) -> ConsumerConfig:
     return ConsumerConfig(
         consumer_uuid=data[CONF_CONSUMER_UUID],
         consumer_name=data[CONF_CONSUMER_NAME],
-        source_power_entity_id=data[CONF_SOURCE_POWER_ENTITY_ID],
+        source_power_entity_id=data.get(CONF_SOURCE_POWER_ENTITY_ID),
         source_energy_entity_id=data[CONF_SOURCE_ENERGY_ENTITY_ID],
     )

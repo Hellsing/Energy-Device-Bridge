@@ -296,3 +296,34 @@ async def test_entity_names_include_consumer_name(hass: HomeAssistant) -> None:
     assert energy_state is not None
     assert power_state.name == "Kuhlschrank Power"
     assert energy_state.name == "Kuhlschrank Energy"
+
+
+async def test_setup_without_power_source_only_creates_energy_sensor(hass: HomeAssistant) -> None:
+    """Power sensor entity is not created when power source is omitted."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-no-power",
+            CONF_CONSUMER_NAME: "Only Energy",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    power_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-no-power_power"
+    )
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-no-power_energy"
+    )
+    assert power_entity_id is None
+    assert energy_entity_id is not None

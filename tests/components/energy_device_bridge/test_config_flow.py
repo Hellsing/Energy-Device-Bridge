@@ -57,6 +57,28 @@ async def test_config_flow_happy_path(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.asyncio
+async def test_config_flow_accepts_missing_power_source(hass: HomeAssistant) -> None:
+    """A consumer can be created without a power source."""
+    await _init_integration(hass)
+    hass.states.async_set(
+        "sensor.test_energy",
+        10.5,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data={
+            CONF_CONSUMER_NAME: "Only Energy",
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.test_energy",
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SOURCE_POWER_ENTITY_ID] is None
+
+
+@pytest.mark.asyncio
 async def test_duplicate_pair_is_blocked(hass: HomeAssistant) -> None:
     """Flow prevents duplicate power/energy pairs."""
     await _init_integration(hass)
@@ -140,6 +162,45 @@ async def test_reconfigure_flow_updates_data(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.asyncio
+async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) -> None:
+    """Options flow updates config entry data via the gear menu path."""
+    await _init_integration(hass)
+    hass.states.async_set("sensor.p1", 120, {"unit_of_measurement": UnitOfPower.WATT})
+    hass.states.async_set("sensor.e1", 2, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    hass.states.async_set("sensor.e2", 3, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-1",
+            CONF_CONSUMER_NAME: "Initial",
+            CONF_SOURCE_POWER_ENTITY_ID: "sensor.p1",
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e1",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    start = await hass.config_entries.options.async_init(entry.entry_id)
+    assert start["type"] is FlowResultType.FORM
+    assert start["step_id"] == "init"
+
+    done = await hass.config_entries.options.async_configure(
+        start["flow_id"],
+        {
+            CONF_CONSUMER_NAME: "Updated via options",
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e2",
+        },
+    )
+    assert done["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_CONSUMER_UUID] == "consumer-1"
+    assert entry.data[CONF_CONSUMER_NAME] == "Updated via options"
+    assert entry.data[CONF_SOURCE_POWER_ENTITY_ID] is None
+    assert entry.data[CONF_SOURCE_ENERGY_ENTITY_ID] == "sensor.e2"
+
+
+@pytest.mark.asyncio
 async def test_config_flow_rejects_invalid_entities(hass: HomeAssistant) -> None:
     """Flow rejects invalid source entity combinations."""
     await _init_integration(hass)
@@ -212,10 +273,12 @@ def test_translation_files_and_runtime_localization_contract() -> None:
 
     for lang in (en, de):
         assert "config" in lang
+        assert "options" in lang
         assert "entity" in lang
         assert lang["config"]["step"]["user"]["data"]["consumer_name"]
         assert lang["config"]["step"]["reconfigure"]["data"]["source_energy_entity_id"]
         assert lang["config"]["abort"]["reconfigure_successful"]
+        assert lang["options"]["step"]["init"]["data"]["source_energy_entity_id"]
         assert lang["entity"]["sensor"]["power"]["name"]
         assert lang["entity"]["sensor"]["energy"]["name"]
 
