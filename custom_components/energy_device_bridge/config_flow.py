@@ -26,9 +26,14 @@ from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 from .const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
+    CONF_ZERO_DROP_POLICY,
+    DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+    DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
+    ZERO_DROP_POLICIES,
 )
 from .models import resolve_consumer_config
 
@@ -82,6 +87,30 @@ def _selector_schema(defaults: dict[str, Any]) -> vol.Schema:
                     domain=[SENSOR_DOMAIN],
                 )
             ),
+        }
+    )
+
+
+def _options_selector_schema(defaults: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_ZERO_DROP_POLICY,
+                default=defaults.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(ZERO_DROP_POLICIES),
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_ZERO_DROP_POLICY,
+                )
+            ),
+            vol.Required(
+                CONF_NOTIFY_ON_LOWER_NON_ZERO,
+                default=defaults.get(
+                    CONF_NOTIFY_ON_LOWER_NON_ZERO,
+                    DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+                ),
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -367,6 +396,14 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
         """Update the config entry through the options flow."""
         config_entry = self._resolve_options_entry()
         defaults = resolve_consumer_config(config_entry.data)
+        option_defaults = {
+            CONF_ZERO_DROP_POLICY: config_entry.options.get(
+                CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY
+            ),
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: config_entry.options.get(
+                CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
+            ),
+        }
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -377,6 +414,10 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
                 skip_entry_id=config_entry.entry_id,
             )
             if not result.errors and result.validated_data:
+                selected_zero_drop_policy = user_input[CONF_ZERO_DROP_POLICY]
+                selected_notify_on_lower_non_zero = bool(
+                    user_input[CONF_NOTIFY_ON_LOWER_NON_ZERO]
+                )
                 self.hass.config_entries.async_update_entry(
                     config_entry,
                     title=result.validated_data[CONF_CONSUMER_NAME],
@@ -386,17 +427,30 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
                     },
                 )
                 await self.hass.config_entries.async_reload(config_entry.entry_id)
-                return self.async_create_entry(title="", data={})
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        **config_entry.options,
+                        CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
+                        CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                    },
+                )
             errors = result.errors
 
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                _selector_schema({}),
+                vol.Schema(
+                    {
+                        **_selector_schema({}).schema,
+                        **_options_selector_schema({}).schema,
+                    }
+                ),
                 {
                     CONF_CONSUMER_NAME: defaults.consumer_name,
                     CONF_SOURCE_POWER_ENTITY_ID: defaults.source_power_entity_id,
                     CONF_SOURCE_ENERGY_ENTITY_ID: defaults.source_energy_entity_id,
+                    **option_defaults,
                 },
             ),
             errors=errors,

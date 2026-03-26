@@ -17,6 +17,7 @@ Each config entry creates one virtual device with:
 - Persistent energy accumulation state across reloads and restarts
 - Source energy normalization to kWh (`Wh` and `kWh` supported)
 - Maintenance actions to adopt baseline, reset tracker, or set virtual total
+- Configurable lower-source handling policies for zero drops and lower non-zero anomalies
 - Built-in Repairs issues for missing/invalid source sensor conditions
 - Diagnostics download with redacted user/source details
 
@@ -56,7 +57,15 @@ Accumulation logic:
 2. Convert source energy to `kWh`.
 3. Treat the first valid value as baseline.
 4. Add only positive deltas to the virtual total.
-5. Ignore negative deltas (source reset/rollover) so the virtual total never decreases.
+5. Never decrease the virtual total when the source drops lower.
+
+Lower-source drop behavior is configurable in the integration options:
+- **Zero-drop policy** (`zero_drop_policy`)
+  - `accept_zero_as_new_cycle` (default, backward-compatible): when source drops to `0`, baseline is immediately set to `0` and future positive deltas accumulate from `0`.
+  - `ignore_zero_until_non_zero`: when source drops to `0`, baseline is not changed; the first later non-zero reading becomes the new baseline without adding a transition delta.
+- **Notify on lower non-zero** (`notify_on_lower_non_zero`)
+  - If enabled, lower non-zero drops create/update one deterministic persistent notification per config entry.
+  - If disabled (default), no persistent notification is shown.
 
 Maintenance actions:
 - **Adopt current source as baseline**: stores the current valid source value as baseline without changing virtual total.
@@ -64,6 +73,11 @@ Maintenance actions:
 - **Set virtual total**: sets the virtual total explicitly (kWh), then refreshes baseline from current source when possible.
 
 You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.
+
+Examples:
+- **Transient zero from flaky source**: use `ignore_zero_until_non_zero` to avoid anchoring baseline to temporary zeros.
+- **Daily-reset meter**: use `accept_zero_as_new_cycle` so accumulation naturally continues from each reset cycle.
+- **Unexpected lower non-zero after replacement/reboot**: baseline is adopted to the new lower value, virtual total is preserved, and optional notification can alert you.
 
 ## Data updates
 

@@ -44,7 +44,9 @@
         "data": {
           "consumer_name": "Name des Verbrauchers",
           "source_power_entity_id": "Quell-Leistungssensor (optional)",
-          "source_energy_entity_id": "Quell-Energiesensor"
+          "source_energy_entity_id": "Quell-Energiesensor",
+          "zero_drop_policy": "Verhalten bei Quellwert 0",
+          "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen"
         }
       }
     },
@@ -59,6 +61,14 @@
       "invalid_power_unit": "Leistungsquelle muss die Einheit W oder kW haben.",
       "invalid_energy_unit": "Energiequelle muss die Einheit Wh oder kWh haben.",
       "invalid_energy_state_class": "Energiequelle sollte die Zustandsklasse total oder total_increasing verwenden."
+    }
+  },
+  "selector": {
+    "zero_drop_policy": {
+      "options": {
+        "ignore_zero_until_non_zero": "0 ignorieren bis zum ersten Nicht-0-Wert",
+        "accept_zero_as_new_cycle": "0 sofort als neue Zyklus-Basis akzeptieren"
+      }
     }
   },
   "entity": {

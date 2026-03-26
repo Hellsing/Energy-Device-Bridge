@@ -6,13 +6,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from .const import (
+    ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
     ATTR_IGNORED_NEGATIVE_DELTA_COUNT,
+    ATTR_LAST_LOWER_VALUE_EVENT,
     ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
     ATTR_LAST_SOURCE_ENTITY_ID,
     ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
+    ATTR_LAST_ZERO_DROP_AT,
+    ATTR_LOWER_VALUE_COUNT,
     ATTR_RESET_DETECTED_COUNT,
     ATTR_VIRTUAL_TOTAL_KWH,
+    ATTR_ZERO_DROP_COUNT,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
     CONF_SOURCE_ENERGY_ENTITY_ID,
@@ -41,6 +46,11 @@ class EnergyTrackerState:
     ignored_negative_delta_count: int = 0
     reset_detected_count: int = 0
     current_normalized_source_unit: str | None = None
+    awaiting_non_zero_after_zero_drop: bool = False
+    last_zero_drop_at: str | None = None
+    lower_value_count: int = 0
+    zero_drop_count: int = 0
+    last_lower_value_event: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize state for storage."""
@@ -52,6 +62,11 @@ class EnergyTrackerState:
             ATTR_IGNORED_NEGATIVE_DELTA_COUNT: self.ignored_negative_delta_count,
             ATTR_RESET_DETECTED_COUNT: self.reset_detected_count,
             ATTR_CURRENT_NORMALIZED_SOURCE_UNIT: self.current_normalized_source_unit,
+            ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP: self.awaiting_non_zero_after_zero_drop,
+            ATTR_LAST_ZERO_DROP_AT: self.last_zero_drop_at,
+            ATTR_LOWER_VALUE_COUNT: self.lower_value_count,
+            ATTR_ZERO_DROP_COUNT: self.zero_drop_count,
+            ATTR_LAST_LOWER_VALUE_EVENT: self.last_lower_value_event,
         }
 
     @classmethod
@@ -72,6 +87,13 @@ class EnergyTrackerState:
             ignored_negative_delta_count=int(data.get(ATTR_IGNORED_NEGATIVE_DELTA_COUNT, 0)),
             reset_detected_count=int(data.get(ATTR_RESET_DETECTED_COUNT, 0)),
             current_normalized_source_unit=data.get(ATTR_CURRENT_NORMALIZED_SOURCE_UNIT),
+            awaiting_non_zero_after_zero_drop=bool(
+                data.get(ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP, False)
+            ),
+            last_zero_drop_at=data.get(ATTR_LAST_ZERO_DROP_AT),
+            lower_value_count=int(data.get(ATTR_LOWER_VALUE_COUNT, 0)),
+            zero_drop_count=int(data.get(ATTR_ZERO_DROP_COUNT, 0)),
+            last_lower_value_event=data.get(ATTR_LAST_LOWER_VALUE_EVENT),
         )
 
 

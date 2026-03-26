@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.components import persistent_notification
 from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -32,13 +33,22 @@ from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 
 from . import EnergyDeviceBridgeConfigEntry
 from .const import (
+    ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
     ATTR_IGNORED_NEGATIVE_DELTA_COUNT,
+    ATTR_LAST_LOWER_VALUE_EVENT,
     ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
     ATTR_LAST_SOURCE_ENTITY_ID,
     ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
+    ATTR_LAST_ZERO_DROP_AT,
+    ATTR_LOWER_VALUE_COUNT,
     ATTR_RESET_DETECTED_COUNT,
     ATTR_VALUE_KWH,
+    ATTR_ZERO_DROP_COUNT,
+    CONF_NOTIFY_ON_LOWER_NON_ZERO,
+    CONF_ZERO_DROP_POLICY,
+    DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+    DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
     ISSUE_ENERGY_STATE_CLASS_INVALID,
     ISSUE_ENERGY_UNIT_UNSUPPORTED,
@@ -47,10 +57,13 @@ from .const import (
     SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
     SERVICE_RESET_TRACKER,
     SERVICE_SET_VIRTUAL_TOTAL,
+    ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
+    ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 from .models import ConsumerConfig, EnergyTrackerState
 
 _LOGGER = logging.getLogger(__name__)
+_LOWER_VALUE_EPSILON = 1e-9
 
 _POWER_DESCRIPTION = SensorEntityDescription(
     key="power",
@@ -245,6 +258,13 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             ATTR_IGNORED_NEGATIVE_DELTA_COUNT: self._tracker.ignored_negative_delta_count,
             ATTR_RESET_DETECTED_COUNT: self._tracker.reset_detected_count,
             ATTR_CURRENT_NORMALIZED_SOURCE_UNIT: self._tracker.current_normalized_source_unit,
+            ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP: (
+                self._tracker.awaiting_non_zero_after_zero_drop
+            ),
+            ATTR_LAST_ZERO_DROP_AT: self._tracker.last_zero_drop_at,
+            ATTR_LOWER_VALUE_COUNT: self._tracker.lower_value_count,
+            ATTR_ZERO_DROP_COUNT: self._tracker.zero_drop_count,
+            ATTR_LAST_LOWER_VALUE_EVENT: self._tracker.last_lower_value_event,
         }
 
     async def async_added_to_hass(self) -> None:
@@ -334,30 +354,39 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         if self._tracker.last_source_entity_id != self._source_entity_id:
             self._tracker.last_source_entity_id = self._source_entity_id
             self._tracker.last_source_energy_value_kwh = None
+            self._tracker.awaiting_non_zero_after_zero_drop = False
 
         if self._tracker.last_source_energy_value_kwh is None:
-            self._tracker.last_source_energy_value_kwh = source_kwh
-            self._tracker.last_valid_source_sample_ts = dt_util.utcnow().isoformat()
-            self._tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+            self._update_baseline(source_kwh)
             self._schedule_save()
             return
 
-        delta = source_kwh - self._tracker.last_source_energy_value_kwh
-        if delta > 0:
+        if self._tracker.awaiting_non_zero_after_zero_drop:
+            if source_kwh <= _LOWER_VALUE_EPSILON:
+                return
+            self._tracker.awaiting_non_zero_after_zero_drop = False
+            self._update_baseline(source_kwh)
+            self._schedule_save()
+            return
+
+        previous_kwh = self._tracker.last_source_energy_value_kwh
+        delta = source_kwh - previous_kwh
+        if delta > _LOWER_VALUE_EPSILON:
             self._tracker.virtual_total_kwh += delta
-        elif delta < 0:
-            self._tracker.ignored_negative_delta_count += 1
-            self._tracker.reset_detected_count += 1
+            self._update_baseline(source_kwh)
+        elif delta < -_LOWER_VALUE_EPSILON:
             _LOGGER.debug(
                 "Source energy reset/rollover for %s: previous=%s current=%s",
                 self._source_entity_id,
-                self._tracker.last_source_energy_value_kwh,
+                previous_kwh,
                 source_kwh,
             )
-
-        self._tracker.last_source_energy_value_kwh = source_kwh
-        self._tracker.last_valid_source_sample_ts = dt_util.utcnow().isoformat()
-        self._tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+            if source_kwh <= _LOWER_VALUE_EPSILON:
+                self._handle_zero_drop(source_kwh)
+            else:
+                self._handle_lower_non_zero(previous_kwh, source_kwh)
+        else:
+            self._update_baseline(source_kwh)
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
         self._schedule_save()
 
@@ -383,6 +412,89 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         if source_kwh is None:
             raise HomeAssistantError("Configured source energy sensor unit is unsupported")
         return source_kwh
+
+    @property
+    def _zero_drop_policy(self) -> str:
+        """Return configured zero-drop policy for this entry."""
+        return str(
+            self._entry.options.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY)
+        )
+
+    @property
+    def _notify_on_lower_non_zero(self) -> bool:
+        """Return whether lower non-zero anomalies should notify."""
+        return bool(
+            self._entry.options.get(
+                CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
+            )
+        )
+
+    def _update_baseline(self, source_kwh: float) -> None:
+        """Update source baseline metadata from a valid reading."""
+        self._tracker.last_source_entity_id = self._source_entity_id
+        self._tracker.last_source_energy_value_kwh = source_kwh
+        self._tracker.awaiting_non_zero_after_zero_drop = False
+        self._tracker.last_valid_source_sample_ts = dt_util.utcnow().isoformat()
+        self._tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+
+    def _notification_id(self) -> str:
+        """Build deterministic persistent-notification id for this entry."""
+        return f"{DOMAIN}_{self._entry.entry_id}_lower_non_zero"
+
+    def _create_lower_non_zero_notification(self, previous_kwh: float, new_kwh: float) -> None:
+        """Create/update a persistent notification for lower non-zero readings."""
+        now = dt_util.utcnow().isoformat()
+        persistent_notification.async_create(
+            self.hass,
+            (
+                "Source energy reading dropped to a lower non-zero value.\n\n"
+                f"Source entity: {self._source_entity_id}\n"
+                f"Previous source value (kWh): {previous_kwh:.6f}\n"
+                f"New lower source value (kWh): {new_kwh:.6f}\n"
+                f"Timestamp (UTC): {now}\n\n"
+                "The virtual total was not decreased. The new reading was adopted as baseline."
+            ),
+            title="Energy Device Bridge: lower source reading detected",
+            notification_id=self._notification_id(),
+        )
+
+    def _handle_zero_drop(self, source_kwh: float) -> None:
+        """Apply configured zero-drop behavior without decreasing virtual total."""
+        _ = source_kwh
+        self._tracker.ignored_negative_delta_count += 1
+        self._tracker.reset_detected_count += 1
+        self._tracker.zero_drop_count += 1
+        self._tracker.last_zero_drop_at = dt_util.utcnow().isoformat()
+        self._tracker.last_lower_value_event = {
+            "kind": "zero_drop",
+            "source_entity_id": self._source_entity_id,
+            "timestamp": self._tracker.last_zero_drop_at,
+        }
+
+        if self._zero_drop_policy == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO:
+            self._tracker.awaiting_non_zero_after_zero_drop = True
+            return
+
+        self._tracker.awaiting_non_zero_after_zero_drop = False
+        self._update_baseline(0.0)
+
+    def _handle_lower_non_zero(self, previous_kwh: float, source_kwh: float) -> None:
+        """Handle lower non-zero reading by adopting new baseline and optional notify."""
+        now = dt_util.utcnow().isoformat()
+        self._tracker.ignored_negative_delta_count += 1
+        self._tracker.reset_detected_count += 1
+        self._tracker.lower_value_count += 1
+        self._tracker.awaiting_non_zero_after_zero_drop = False
+        self._tracker.last_lower_value_event = {
+            "kind": "lower_non_zero",
+            "source_entity_id": self._source_entity_id,
+            "previous_kwh": previous_kwh,
+            "new_kwh": source_kwh,
+            "timestamp": now,
+        }
+        if self._notify_on_lower_non_zero:
+            self._create_lower_non_zero_notification(previous_kwh, source_kwh)
+        self._update_baseline(source_kwh)
 
     async def async_adopt_current_source_as_baseline(self) -> None:
         """Adopt current valid source value as new baseline without changing total."""
@@ -416,6 +528,7 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         except HomeAssistantError:
             self._tracker.last_source_entity_id = None
             self._tracker.last_source_energy_value_kwh = None
+            self._tracker.awaiting_non_zero_after_zero_drop = False
             self._tracker.last_valid_source_sample_ts = None
             self._tracker.current_normalized_source_unit = None
         self._schedule_save()
@@ -429,6 +542,15 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             ATTR_IGNORED_NEGATIVE_DELTA_COUNT: self._tracker.ignored_negative_delta_count,
             ATTR_RESET_DETECTED_COUNT: self._tracker.reset_detected_count,
             ATTR_CURRENT_NORMALIZED_SOURCE_UNIT: self._tracker.current_normalized_source_unit,
+            ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP: (
+                self._tracker.awaiting_non_zero_after_zero_drop
+            ),
+            ATTR_LAST_ZERO_DROP_AT: self._tracker.last_zero_drop_at,
+            ATTR_LOWER_VALUE_COUNT: self._tracker.lower_value_count,
+            ATTR_ZERO_DROP_COUNT: self._tracker.zero_drop_count,
+            ATTR_LAST_LOWER_VALUE_EVENT: self._tracker.last_lower_value_event,
+            CONF_ZERO_DROP_POLICY: self._zero_drop_policy,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: self._notify_on_lower_non_zero,
         }
 
 

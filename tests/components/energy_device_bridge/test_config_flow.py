@@ -17,9 +17,14 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.energy_device_bridge.const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
+    CONF_ZERO_DROP_POLICY,
+    DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+    DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
+    ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 
 
@@ -191,6 +196,8 @@ async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) ->
         {
             CONF_CONSUMER_NAME: "Updated via options",
             CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e2",
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: True,
         },
     )
     assert done["type"] is FlowResultType.CREATE_ENTRY
@@ -198,6 +205,37 @@ async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) ->
     assert entry.data[CONF_CONSUMER_NAME] == "Updated via options"
     assert entry.data[CONF_SOURCE_POWER_ENTITY_ID] is None
     assert entry.data[CONF_SOURCE_ENERGY_ENTITY_ID] == "sensor.e2"
+    assert entry.options[CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
+    assert entry.options[CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
+
+
+@pytest.mark.asyncio
+async def test_existing_entry_defaults_for_new_options(hass: HomeAssistant) -> None:
+    """Existing entries with no options still use compatibility defaults."""
+    await _init_integration(hass)
+    hass.states.async_set(
+        "sensor.e1",
+        1,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-legacy",
+            CONF_CONSUMER_NAME: "Legacy",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e1",
+        },
+        options={},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.options.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY) == DEFAULT_ZERO_DROP_POLICY
+    assert (
+        entry.options.get(CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO)
+        == DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
+    )
 
 
 @pytest.mark.asyncio
@@ -304,6 +342,9 @@ def test_translation_files_and_runtime_localization_contract() -> None:
         assert lang["config"]["step"]["reconfigure"]["data"]["source_energy_entity_id"]
         assert lang["config"]["abort"]["reconfigure_successful"]
         assert lang["options"]["step"]["init"]["data"]["source_energy_entity_id"]
+        assert lang["options"]["step"]["init"]["data"]["zero_drop_policy"]
+        assert lang["options"]["step"]["init"]["data"]["notify_on_lower_non_zero"]
+        assert lang["selector"]["zero_drop_policy"]["options"]["ignore_zero_until_non_zero"]
         assert lang["entity"]["sensor"]["power"]["name"]
         assert lang["entity"]["sensor"]["energy"]["name"]
         assert lang["entity"]["button"]["adopt_current_source_as_baseline"]["name"]

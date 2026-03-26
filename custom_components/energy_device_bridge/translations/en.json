@@ -44,7 +44,9 @@
         "data": {
           "consumer_name": "Consumer name",
           "source_power_entity_id": "Source power sensor (optional)",
-          "source_energy_entity_id": "Source energy sensor"
+          "source_energy_entity_id": "Source energy sensor",
+          "zero_drop_policy": "Source zero-drop handling",
+          "notify_on_lower_non_zero": "Create persistent notification for lower non-zero source values"
         }
       }
     },
@@ -59,6 +61,14 @@
       "invalid_power_unit": "Power source unit must be W or kW.",
       "invalid_energy_unit": "Energy source unit must be Wh or kWh.",
       "invalid_energy_state_class": "Energy source should use total or total_increasing state class."
+    }
+  },
+  "selector": {
+    "zero_drop_policy": {
+      "options": {
+        "ignore_zero_until_non_zero": "Ignore zero until first non-zero reading",
+        "accept_zero_as_new_cycle": "Accept zero immediately as new cycle baseline"
+      }
     }
   },
   "entity": {

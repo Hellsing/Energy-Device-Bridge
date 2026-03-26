@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
@@ -13,12 +15,12 @@ class EnergyDeviceBridgeStore:
     """Persist virtual energy metadata per config entry."""
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
-        self._store: Store[dict[str, float | int | str | None]] = Store(
+        self._store: Store[dict[str, Any]] = Store(
             hass,
             STORAGE_VERSION,
             f"{STORAGE_KEY_PREFIX}{entry_id}",
         )
-        self._pending_data: dict[str, float | int | str | None] | None = None
+        self._pending_data: dict[str, Any] | None = None
 
     async def async_load(self) -> EnergyTrackerState | None:
         """Load stored tracker state."""
@@ -42,7 +44,7 @@ class EnergyDeviceBridgeStore:
         self._store.async_delay_save(self._async_get_pending_data, delay)
 
     @callback
-    def _async_get_pending_data(self) -> dict[str, float | int | str | None]:
+    def _async_get_pending_data(self) -> dict[str, Any]:
         """Return latest pending state for delayed save."""
         return self._pending_data or {}
 

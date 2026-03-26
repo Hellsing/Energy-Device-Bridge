@@ -12,12 +12,18 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_device_bridge.const import (
+    ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
     ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
+    ATTR_LOWER_VALUE_COUNT,
     ATTR_VALUE_KWH,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
+    CONF_ZERO_DROP_POLICY,
+    DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+    DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
     ISSUE_ENERGY_STATE_CLASS_INVALID,
     ISSUE_ENERGY_UNIT_UNSUPPORTED,
@@ -25,6 +31,8 @@ from custom_components.energy_device_bridge.const import (
     SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
     SERVICE_RESET_TRACKER,
     SERVICE_SET_VIRTUAL_TOTAL,
+    ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
+    ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -37,7 +45,10 @@ def _state_float(hass: HomeAssistant, entity_id: str) -> float:
 
 
 async def _setup_entry(
-    hass: HomeAssistant, *, source_energy_entity_id: str = "sensor.src_energy"
+    hass: HomeAssistant,
+    *,
+    source_energy_entity_id: str = "sensor.src_energy",
+    options: dict | None = None,
 ) -> MockConfigEntry:
     hass.states.async_set("sensor.src_power", 100, {"unit_of_measurement": UnitOfPower.WATT})
     hass.states.async_set(
@@ -52,6 +63,11 @@ async def _setup_entry(
             CONF_CONSUMER_NAME: "Kuhlschrank",
             CONF_SOURCE_POWER_ENTITY_ID: "sensor.src_power",
             CONF_SOURCE_ENERGY_ENTITY_ID: source_energy_entity_id,
+        },
+        options=options
+        or {
+            CONF_ZERO_DROP_POLICY: DEFAULT_ZERO_DROP_POLICY,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
         },
     )
     entry.add_to_hass(hass)
@@ -483,3 +499,121 @@ async def test_runtime_repairs_created_and_dismissed(hass: HomeAssistant) -> Non
         DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_UNIT_UNSUPPORTED}"
     ) is None
     assert hass.states.get(energy_entity_id) is not None
+
+
+async def test_zero_drop_policy_accept_zero_as_new_cycle(hass: HomeAssistant) -> None:
+    """When configured, zero drop becomes baseline immediately."""
+    await _setup_entry(
+        hass,
+        options={
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: False,
+        },
+    )
+    _, energy_entity_id = _entity_ids(hass)
+
+    hass.states.async_set("sensor.src_energy", 12, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 2.0
+
+    hass.states.async_set("sensor.src_energy", 0, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 2.0
+    assert float(state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH]) == 0.0
+
+    hass.states.async_set("sensor.src_energy", 0.7, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 2.7
+
+
+async def test_zero_drop_policy_ignore_zero_until_non_zero(hass: HomeAssistant) -> None:
+    """Zero reading is ignored until first non-zero, then adopted as baseline only."""
+    await _setup_entry(
+        hass,
+        options={
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: False,
+        },
+    )
+    _, energy_entity_id = _entity_ids(hass)
+
+    hass.states.async_set("sensor.src_energy", 15, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 5.0
+
+    hass.states.async_set("sensor.src_energy", 0, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 5.0
+    assert state.attributes[ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP] is True
+    assert float(state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH]) == 15.0
+
+    # Repeated zeros are ignored while awaiting first non-zero.
+    hass.states.async_set("sensor.src_energy", 0, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 5.0
+    assert state.attributes[ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP] is True
+
+    # First non-zero becomes baseline only (no artificial +delta from 15 -> 0.8).
+    hass.states.async_set("sensor.src_energy", 0.8, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 5.0
+    assert state.attributes[ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP] is False
+    assert float(state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH]) == 0.8
+
+    hass.states.async_set("sensor.src_energy", 1.0, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 5.2
+
+
+async def test_lower_non_zero_adopts_baseline_and_optional_notification(
+    hass: HomeAssistant,
+) -> None:
+    """Lower non-zero readings adopt baseline and optionally notify deterministically."""
+    await _setup_entry(
+        hass,
+        options={
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: True,
+        },
+    )
+    _, energy_entity_id = _entity_ids(hass)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    issue_registry = ir.async_get(hass)
+    issue_prefix = entry.data[CONF_CONSUMER_UUID]
+
+    hass.states.async_set("sensor.src_energy", 20, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 10.0
+
+    with patch(
+        "custom_components.energy_device_bridge.sensor.persistent_notification.async_create"
+    ) as notify_mock:
+        hass.states.async_set("sensor.src_energy", 3.5, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+        await hass.async_block_till_done()
+        assert notify_mock.call_count == 1
+        assert notify_mock.call_args.kwargs["notification_id"] == (
+            f"{DOMAIN}_{entry.entry_id}_lower_non_zero"
+        )
+
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 10.0
+    assert float(state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH]) == 3.5
+    assert int(state.attributes[ATTR_LOWER_VALUE_COUNT]) >= 1
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_SOURCE_ENTITY_MISSING}"
+    ) is None
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_STATE_CLASS_INVALID}"
+    ) is None
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_UNIT_UNSUPPORTED}"
+    ) is None

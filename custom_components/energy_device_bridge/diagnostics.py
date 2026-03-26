@@ -24,6 +24,7 @@ TO_REDACT = {
     CONF_SOURCE_POWER_ENTITY_ID,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     ATTR_LAST_SOURCE_ENTITY_ID,
+    "source_entity_id",
 }
 
 
@@ -38,6 +39,7 @@ async def async_get_config_entry_diagnostics(
             "entry_id": entry.entry_id,
             "title": entry.title,
             "data": async_redact_data(dict(entry.data), TO_REDACT),
+            "options": async_redact_data(dict(entry.options), TO_REDACT),
         },
         "stored_state": async_redact_data(
             stored_state.as_dict() if stored_state else {},
