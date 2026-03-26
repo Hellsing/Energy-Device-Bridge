@@ -11,9 +11,9 @@ on:
           - prepare
           - publish
         default: prepare
-      release_as:
-        description: "Version to release (e.g. 1.2.3)"
-        required: false
+      release_version:
+        description: "Release version (plain SemVer, e.g. 1.2.3)"
+        required: true
         type: string
 
 permissions:
@@ -26,32 +26,178 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-please:
+  prepare:
+    if: ${{ inputs.mode == 'prepare' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Validate version input
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
         run: |
-          if [ -z "${{ inputs.release_as }}" ]; then
-            echo "release_as is required for this repository's manual release flow."
-            echo "Provide a plain SemVer value, for example: 1.2.3"
+          if ! [[ "${{ inputs.release_version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_version must be plain SemVer (for example: 1.2.3)"
             exit 1
           fi
 
-      # Uses the built-in GITHUB_TOKEN by default; switch to a PAT or GitHub App token secret later if CI must run on Release Please PRs.
-      - name: Prepare release PR
-        if: ${{ inputs.mode == 'prepare' }}
-        uses: googleapis/release-please-action@v4
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          skip-github-release: true
-          release-as: ${{ inputs.release_as }}
+      - name: Prepare release branch, changelog, and PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
 
-      - name: Publish release/tag
-        if: ${{ inputs.mode == 'publish' }}
-        uses: googleapis/release-please-action@v4
+          git fetch --tags --force
+          PREV_TAG=""
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              PREV_TAG="$tag"
+              break
+            fi
+          done < <(git tag --sort=-version:refname)
+
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="$PREV_TAG..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+
+          CHANGE_LINES="$(git log --pretty=format:'- %s (%h)' $RANGE)"
+          if [ -z "$CHANGE_LINES" ]; then
+            echo "No commits found for release notes; nothing to prepare."
+            exit 1
+          fi
+          export CHANGE_LINES
+
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          today = datetime.date.today().isoformat()
+
+          manifest_path = Path("custom_components/energy_device_bridge/manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest["version"] = version
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+          changelog_path = Path("CHANGELOG.md")
+          if changelog_path.exists():
+            existing = changelog_path.read_text(encoding="utf-8").lstrip()
+          else:
+            existing = "# Changelog\n\n"
+
+          changes = os.environ["CHANGE_LINES"].strip()
+          entry = f"## {version} - {today}\n\n{changes}\n\n"
+
+          if existing.startswith("# Changelog"):
+            if "\n\n" in existing:
+              header, rest = existing.split("\n\n", 1)
+              new_text = f"{header}\n\n{entry}{rest.lstrip()}"
+            else:
+              new_text = f"{existing}\n\n{entry}"
+          else:
+            new_text = f"# Changelog\n\n{entry}{existing}"
+
+          changelog_path.write_text(new_text, encoding="utf-8")
+          PY
+
+          BRANCH="release/${RELEASE_VERSION}"
+          git checkout -B "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/energy_device_bridge/manifest.json CHANGELOG.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 1
+          fi
+
+          git commit -m "release ${RELEASE_VERSION}"
+          git push -u origin "$BRANCH" --force
+
+          PR_NUMBER="$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number')"
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "release ${RELEASE_VERSION}" \
+              --body "Manual release preparation for ${RELEASE_VERSION}. This PR updates manifest version and CHANGELOG from commits since the previous release tag."
+          else
+            gh pr edit "$PR_NUMBER" \
+              --title "release ${RELEASE_VERSION}" \
+              --body "Manual release preparation for ${RELEASE_VERSION}. This PR updates manifest version and CHANGELOG from commits since the previous release tag."
+          fi
+
+  publish:
+    if: ${{ inputs.mode == 'publish' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          skip-github-pull-request: true
-          release-as: ${{ inputs.release_as }}
+          fetch-depth: 0
+
+      - name: Validate release version
+        run: |
+          if ! [[ "${{ inputs.release_version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_version must be plain SemVer (for example: 1.2.3)"
+            exit 1
+          fi
+
+      - name: Verify manifest version matches release version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          manifest = json.loads(Path("custom_components/energy_device_bridge/manifest.json").read_text(encoding="utf-8"))
+          if manifest.get("version") != version:
+            raise SystemExit(
+              f"Manifest version ({manifest.get('version')}) does not match requested release_version ({version}). "
+              "Merge the release PR first, then publish."
+            )
+          PY
+
+      - name: Create GitHub release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_VERSION} already exists on origin."
+            exit 1
+          fi
+
+          PREV_TAG=""
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              PREV_TAG="$tag"
+              break
+            fi
+          done < <(git tag --sort=-version:refname)
+
+          if [ -n "$PREV_TAG" ]; then
+            gh release create "${RELEASE_VERSION}" \
+              --target main \
+              --title "${RELEASE_VERSION}" \
+              --generate-notes \
+              --notes-start-tag "$PREV_TAG" \
+              --fail-on-no-commits
+          else
+            gh release create "${RELEASE_VERSION}" \
+              --target main \
+              --title "${RELEASE_VERSION}" \
+              --generate-notes
+          fi
