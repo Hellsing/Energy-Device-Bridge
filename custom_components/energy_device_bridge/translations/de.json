@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Virtuellen Verbraucher erstellen",
-        "description": "Erstelle eine Energy Device Bridge mit persistentem Gesamtwert fuer das Energie-Dashboard und austauschbaren Quell-Entitaeten.",
+        "description": "Erstelle eine Energy Device Bridge mit einem persistenten Gesamtwert für das Energie-Dashboard und austauschbaren Quell-Entitäten.",
         "data": {
           "consumer_name": "Name des Verbrauchers",
           "source_power_entity_id": "Quell-Leistungssensor",
@@ -22,10 +22,10 @@
     },
     "error": {
       "duplicate_pair": "Dieses Leistungs-/Energiequellenpaar wird bereits verwendet.",
-      "entity_not_found": "Die gewaehlte Entitaet existiert nicht.",
-      "must_be_sensor": "Die gewaehlte Entitaet muss ein Sensor sein.",
+      "entity_not_found": "Die gewählte Entität wurde nicht gefunden.",
+      "must_be_sensor": "Die gewählte Entität muss ein Sensor sein.",
       "name_required": "Bitte gib einen Namen an.",
-      "same_entity_pair": "Leistungs- und Energieentitaet muessen unterschiedlich sein.",
+      "same_entity_pair": "Leistungs- und Energieentitäten müssen unterschiedlich sein.",
       "power_not_numeric": "Leistungsquelle muss numerische Werte haben.",
       "energy_not_numeric": "Energiequelle muss numerische Werte haben.",
       "invalid_power_unit": "Leistungsquelle muss die Einheit W oder kW haben.",
@@ -40,7 +40,7 @@
     "step": {
       "init": {
         "title": "Virtuellen Verbraucher konfigurieren",
-        "description": "Aktualisiere diesen Energy Device Bridge-Verbraucher ueber das Konfigurationsmenue.",
+        "description": "Aktualisiere diesen Energy Device Bridge-Verbraucher über das Konfigurationsmenü.",
         "data": {
           "consumer_name": "Name des Verbrauchers",
           "source_power_entity_id": "Quell-Leistungssensor (optional)",
@@ -50,10 +50,10 @@
     },
     "error": {
       "duplicate_pair": "Dieses Leistungs-/Energiequellenpaar wird bereits verwendet.",
-      "entity_not_found": "Die gewaehlte Entitaet existiert nicht.",
-      "must_be_sensor": "Die gewaehlte Entitaet muss ein Sensor sein.",
+      "entity_not_found": "Die gewählte Entität wurde nicht gefunden.",
+      "must_be_sensor": "Die gewählte Entität muss ein Sensor sein.",
       "name_required": "Bitte gib einen Namen an.",
-      "same_entity_pair": "Leistungs- und Energieentitaet muessen unterschiedlich sein.",
+      "same_entity_pair": "Leistungs- und Energieentitäten müssen unterschiedlich sein.",
       "power_not_numeric": "Leistungsquelle muss numerische Werte haben.",
       "energy_not_numeric": "Energiequelle muss numerische Werte haben.",
       "invalid_power_unit": "Leistungsquelle muss die Einheit W oder kW haben.",
