@@ -187,17 +187,55 @@ jobs:
               break
             fi
           done < <(git tag --sort=-version:refname)
+          export PREV_TAG
 
           if [ -n "$PREV_TAG" ]; then
-            gh release create "${RELEASE_VERSION}" \
-              --target main \
-              --title "${RELEASE_VERSION}" \
-              --generate-notes \
-              --notes-start-tag "$PREV_TAG" \
-              --fail-on-no-commits
-          else
-            gh release create "${RELEASE_VERSION}" \
-              --target main \
-              --title "${RELEASE_VERSION}" \
-              --generate-notes
+            if [ "$(git rev-list --count "${PREV_TAG}..HEAD")" -eq 0 ]; then
+              echo "No commits found since previous release tag ${PREV_TAG}."
+              exit 1
+            fi
           fi
+
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          prev_tag = os.environ.get("PREV_TAG", "")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          changelog = Path("CHANGELOG.md")
+          if not changelog.exists():
+            raise SystemExit("CHANGELOG.md not found. Run prepare and merge the release PR first.")
+
+          lines = changelog.read_text(encoding="utf-8").splitlines()
+          target_header = f"## {version} - "
+          start = None
+          for i, line in enumerate(lines):
+            if line.startswith(target_header):
+              start = i + 1
+              break
+
+          if start is None:
+            raise SystemExit(f"Release section for version {version} not found in CHANGELOG.md.")
+
+          end = len(lines)
+          for j in range(start, len(lines)):
+            if lines[j].startswith("## "):
+              end = j
+              break
+
+          section = "\n".join(lines[start:end]).strip()
+          if not section:
+            raise SystemExit(f"Release section for version {version} is empty in CHANGELOG.md.")
+
+          notes = section
+          if prev_tag:
+            notes += f"\n\nFull Changelog: https://github.com/{repo}/compare/{prev_tag}...{version}"
+
+          Path("release-notes.md").write_text(notes + "\n", encoding="utf-8")
+          PY
+
+          gh release create "${RELEASE_VERSION}" \
+            --target main \
+            --title "${RELEASE_VERSION}" \
+            --notes-file release-notes.md
