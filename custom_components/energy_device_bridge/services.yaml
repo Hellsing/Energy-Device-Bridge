@@ -40,3 +40,10 @@ import_source_history:
       required: true
       selector:
         text:
+
+cleanup_recorder_data:
+  name: Cleanup recorder data
+  description: Purge recorder history/events and clear statistics for selected entities. Use this to permanently remove legacy data before recreating entities with the same name.
+  target:
+    entity:
+      integration: energy_device_bridge

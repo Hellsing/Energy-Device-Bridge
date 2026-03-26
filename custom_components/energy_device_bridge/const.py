@@ -69,6 +69,7 @@ SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE: Final = "adopt_current_source_as_basel
 SERVICE_RESET_TRACKER: Final = "reset_tracker"
 SERVICE_SET_VIRTUAL_TOTAL: Final = "set_virtual_total"
 SERVICE_IMPORT_SOURCE_HISTORY: Final = "import_source_history"
+SERVICE_CLEANUP_RECORDER_DATA: Final = "cleanup_recorder_data"
 
 ISSUE_SOURCE_ENTITY_MISSING: Final = "source_entity_missing"
 ISSUE_ENERGY_UNIT_UNSUPPORTED: Final = "energy_unit_unsupported"

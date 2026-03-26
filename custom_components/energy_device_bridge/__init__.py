@@ -25,6 +25,7 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+    SERVICE_CLEANUP_RECORDER_DATA,
     SERVICE_IMPORT_SOURCE_HISTORY,
     SERVICE_RESET_TRACKER,
     SERVICE_SET_VIRTUAL_TOTAL,
@@ -237,6 +238,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         if not accepted:
             _raise_service_validation_error("history_import_in_progress")
 
+    async def _handle_cleanup_recorder_data_service(call: ServiceCall) -> None:
+        entity_ids = list(call.data[ATTR_ENTITY_ID])
+        await _async_purge_entity_history(hass, entity_ids, wait_for_completion=True)
+        _async_clear_statistics_for_entity_ids(hass, entity_ids)
+
     if not hass.services.has_service(DOMAIN, SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE):
         hass.services.async_register(
             DOMAIN,
@@ -270,6 +276,13 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             _handle_import_service,
             schema=vol.Schema({vol.Required("config_entry_id"): cv.string}),
         )
+    if not hass.services.has_service(DOMAIN, SERVICE_CLEANUP_RECORDER_DATA):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CLEANUP_RECORDER_DATA,
+            _handle_cleanup_recorder_data_service,
+            schema=vol.Schema({vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids}),
+        )
     return True
 
 
@@ -296,7 +309,7 @@ async def async_remove_entry(
     hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry
 ) -> None:
     """Remove config entry and persisted metadata/history for owned entities."""
-    _async_cleanup_recorder_for_entry(hass, entry)
+    await _async_cleanup_recorder_for_entry(hass, entry)
     runtime_data = getattr(entry, "runtime_data", None)
     if runtime_data is not None:
         runtime_data.dismiss_all_issues(hass)
@@ -333,32 +346,43 @@ def _async_entry_entity_ids(
     return owned_entity_ids
 
 
-def _async_cleanup_recorder_history_for_entity_ids(
+async def _async_purge_entity_history(
     hass: HomeAssistant,
     entity_ids: list[str],
+    *,
+    wait_for_completion: bool,
 ) -> None:
-    """Best-effort clear of recorder state history for entities."""
+    """Best-effort purge of recorder states/events for entities."""
     if not entity_ids:
         return
-    recorder_instance = _get_recorder_instance(hass)
-    clear_entities = getattr(recorder_instance, "async_clear_entities", None)
-    if callable(clear_entities):
-        clear_entities(entity_ids)
+    if not hass.services.has_service("recorder", "purge_entities"):
+        _LOGGER.debug("Recorder purge_entities service unavailable")
         return
-
-    clear_entity = getattr(recorder_instance, "async_clear_entity", None)
-    if callable(clear_entity):
-        for entity_id in entity_ids:
-            clear_entity(entity_id)
-        return
-
-    _LOGGER.debug(
-        "Recorder entity-history cleanup API unavailable; entity_ids=%s",
-        entity_ids,
+    await hass.services.async_call(
+        "recorder",
+        "purge_entities",
+        {"entity_id": entity_ids, "keep_days": 0},
+        blocking=wait_for_completion,
     )
 
 
-def _async_cleanup_recorder_for_entry(
+def _async_clear_statistics_for_entity_ids(
+    hass: HomeAssistant,
+    entity_ids: list[str],
+) -> None:
+    """Best-effort statistics clear for sensor entities."""
+    statistic_ids = [
+        entity_id for entity_id in entity_ids if entity_id.startswith("sensor.")
+    ]
+    if not statistic_ids:
+        return
+    try:
+        _get_recorder_instance(hass).async_clear_statistics(statistic_ids)
+    except Exception:  # noqa: BLE001 - recorder may be unavailable
+        _LOGGER.debug("Unable to clear statistics for %s", statistic_ids, exc_info=True)
+
+
+async def _async_cleanup_recorder_for_entry(
     hass: HomeAssistant,
     entry: EnergyDeviceBridgeConfigEntry,
 ) -> None:
@@ -366,13 +390,13 @@ def _async_cleanup_recorder_for_entry(
     entity_ids = _async_entry_entity_ids(hass, entry)
     if not entity_ids:
         return
-    statistic_ids = [
-        entity_id for entity_id in entity_ids if entity_id.startswith("sensor.")
-    ]
     try:
-        _async_cleanup_recorder_history_for_entity_ids(hass, entity_ids)
-        if statistic_ids:
-            _get_recorder_instance(hass).async_clear_statistics(statistic_ids)
+        await _async_purge_entity_history(
+            hass,
+            entity_ids,
+            wait_for_completion=False,
+        )
+        _async_clear_statistics_for_entity_ids(hass, entity_ids)
     except Exception:  # noqa: BLE001 - do not block entry removal
         _LOGGER.debug(
             "Unable to clear recorder data while removing entry %s",

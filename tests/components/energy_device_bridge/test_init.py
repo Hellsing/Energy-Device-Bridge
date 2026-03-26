@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.helpers import device_registry as dr
@@ -13,7 +13,10 @@ from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.energy_device_bridge import async_remove_config_entry_device
+from custom_components.energy_device_bridge import (
+    _async_purge_entity_history,
+    async_remove_config_entry_device,
+)
 from custom_components.energy_device_bridge.const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
@@ -21,6 +24,7 @@ from custom_components.energy_device_bridge.const import (
     CONF_SOURCE_POWER_ENTITY_ID,
     DOMAIN,
     SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+    SERVICE_CLEANUP_RECORDER_DATA,
     SERVICE_IMPORT_SOURCE_HISTORY,
     SERVICE_RESET_TRACKER,
     SERVICE_SET_VIRTUAL_TOTAL,
@@ -51,6 +55,7 @@ async def test_import_service_registered(hass) -> None:
     assert hass.services.has_service(DOMAIN, SERVICE_RESET_TRACKER)
     assert hass.services.has_service(DOMAIN, SERVICE_SET_VIRTUAL_TOTAL)
     assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_SOURCE_HISTORY)
+    assert hass.services.has_service(DOMAIN, SERVICE_CLEANUP_RECORDER_DATA)
 
 
 @pytest.mark.asyncio
@@ -173,20 +178,23 @@ async def test_cleanup_recorder_for_entry_clears_history_and_statistics(hass) ->
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    clear_entities = Mock()
+    purge_history = AsyncMock()
     clear_statistics = Mock()
     with patch(
+        "custom_components.energy_device_bridge._async_purge_entity_history",
+        purge_history,
+    ), patch(
         "custom_components.energy_device_bridge._get_recorder_instance",
         return_value=Mock(
-            async_clear_entities=clear_entities,
             async_clear_statistics=clear_statistics,
         ),
     ):
         assert await hass.config_entries.async_remove(entry.entry_id)
         await hass.async_block_till_done()
 
-    clear_entities.assert_called_once()
-    cleared_entity_ids = clear_entities.call_args.args[0]
+    purge_history.assert_awaited_once()
+    cleared_entity_ids = purge_history.call_args.args[1]
+    assert purge_history.call_args.kwargs["wait_for_completion"] is False
     assert any(
         entity_id.startswith("sensor.recorder_cleanup")
         for entity_id in cleared_entity_ids
@@ -201,6 +209,61 @@ async def test_cleanup_recorder_for_entry_clears_history_and_statistics(hass) ->
         statistic_id.startswith("sensor.recorder_cleanup")
         for statistic_id in cleared_statistic_ids
     )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_recorder_data_service_purges_entities_and_statistics(
+    hass,
+) -> None:
+    """Maintenance service purges history and statistics for selected entities."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    purge_history = AsyncMock()
+    clear_statistics = Mock()
+    with patch(
+        "custom_components.energy_device_bridge._async_purge_entity_history",
+        purge_history,
+    ), patch(
+        "custom_components.energy_device_bridge._get_recorder_instance",
+        return_value=Mock(async_clear_statistics=clear_statistics),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEANUP_RECORDER_DATA,
+            {
+                "entity_id": [
+                    "sensor.legacy_bridge_energy",
+                    "button.legacy_bridge_reset",
+                ]
+            },
+            blocking=True,
+        )
+
+    purge_history.assert_awaited_once_with(
+        hass,
+        ["sensor.legacy_bridge_energy", "button.legacy_bridge_reset"],
+        wait_for_completion=True,
+    )
+    clear_statistics.assert_called_once_with(["sensor.legacy_bridge_energy"])
+
+
+@pytest.mark.asyncio
+async def test_async_purge_entity_history_calls_recorder_service(hass) -> None:
+    """Recorder purge_entities is invoked with keep_days=0 for full history removal."""
+    purge_handler = AsyncMock()
+    hass.services.async_register("recorder", "purge_entities", purge_handler)
+
+    await _async_purge_entity_history(
+        hass,
+        ["sensor.bridge_old_energy", "button.bridge_old_reset"],
+        wait_for_completion=True,
+    )
+
+    purge_handler.assert_awaited_once()
+    data = purge_handler.call_args.args[0].data
+    assert data["entity_id"] == ["sensor.bridge_old_energy", "button.bridge_old_reset"]
+    assert data["keep_days"] == 0
 
 
 @pytest.mark.asyncio
