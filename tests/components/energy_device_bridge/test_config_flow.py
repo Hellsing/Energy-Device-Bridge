@@ -54,11 +54,15 @@ async def test_config_flow_happy_path(hass: HomeAssistant) -> None:
             CONF_CONSUMER_NAME: "Kuhlschrank",
             CONF_SOURCE_POWER_ENTITY_ID: "sensor.test_power",
             CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.test_energy",
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: True,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Kuhlschrank"
     assert result["data"][CONF_CONSUMER_UUID]
+    assert result["options"][CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
+    assert result["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
 
 
 @pytest.mark.asyncio
@@ -81,6 +85,8 @@ async def test_config_flow_accepts_missing_power_source(hass: HomeAssistant) -> 
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_SOURCE_POWER_ENTITY_ID] is None
+    assert result["options"][CONF_ZERO_DROP_POLICY] == DEFAULT_ZERO_DROP_POLICY
+    assert result["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] == DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
 
 
 @pytest.mark.asyncio
@@ -339,6 +345,8 @@ def test_translation_files_and_runtime_localization_contract() -> None:
         assert "options" in lang
         assert "entity" in lang
         assert lang["config"]["step"]["user"]["data"]["consumer_name"]
+        assert lang["config"]["step"]["user"]["data"]["zero_drop_policy"]
+        assert lang["config"]["step"]["user"]["data"]["notify_on_lower_non_zero"]
         assert lang["config"]["step"]["reconfigure"]["data"]["source_energy_entity_id"]
         assert lang["config"]["abort"]["reconfigure_successful"]
         assert lang["options"]["step"]["init"]["data"]["source_energy_entity_id"]

@@ -115,6 +115,16 @@ def _options_selector_schema(defaults: dict[str, Any]) -> vol.Schema:
     )
 
 
+def _combined_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Merge base entity schema and behavior options schema."""
+    return vol.Schema(
+        {
+            **_selector_schema(defaults).schema,
+            **_options_selector_schema(defaults).schema,
+        }
+    )
+
+
 def _parse_numeric_state_value(state_value: str) -> float | None:
     if state_value.lower() in {"none", STATE_UNKNOWN, STATE_UNAVAILABLE}:
         return None
@@ -299,19 +309,44 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 consumer_uuid = str(uuid4())
                 await self.async_set_unique_id(consumer_uuid)
                 self._abort_if_unique_id_configured()
+                selected_zero_drop_policy = user_input.get(
+                    CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY
+                )
+                selected_notify_on_lower_non_zero = bool(
+                    user_input.get(
+                        CONF_NOTIFY_ON_LOWER_NON_ZERO,
+                        DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+                    )
+                )
                 data = {
                     CONF_CONSUMER_UUID: consumer_uuid,
                     **result.validated_data,
                 }
-                return self.async_create_entry(
-                    title=result.validated_data[CONF_CONSUMER_NAME],
-                    data=data,
-                )
+                try:
+                    return self.async_create_entry(
+                        title=result.validated_data[CONF_CONSUMER_NAME],
+                        data=data,
+                        options={
+                            CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
+                            CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                        },
+                    )
+                except TypeError:
+                    # Compatibility fallback for HA versions lacking create_entry options arg.
+                    entry_result = self.async_create_entry(
+                        title=result.validated_data[CONF_CONSUMER_NAME],
+                        data=data,
+                    )
+                    entry_result["options"] = {
+                        CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
+                        CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                    }
+                    return entry_result
             errors = result.errors
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_selector_schema(user_input or {}),
+            data_schema=_combined_schema(user_input or {}),
             errors=errors,
         )
 
@@ -440,12 +475,7 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(
-                    {
-                        **_selector_schema({}).schema,
-                        **_options_selector_schema({}).schema,
-                    }
-                ),
+                _combined_schema({}),
                 {
                     CONF_CONSUMER_NAME: defaults.consumer_name,
                     CONF_SOURCE_POWER_ENTITY_ID: defaults.source_power_entity_id,

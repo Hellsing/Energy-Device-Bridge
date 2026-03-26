@@ -7,7 +7,9 @@
         "data": {
           "consumer_name": "Consumer name",
           "source_power_entity_id": "Source power sensor (optional)",
-          "source_energy_entity_id": "Source energy sensor"
+          "source_energy_entity_id": "Source energy sensor",
+          "zero_drop_policy": "Source zero-drop handling",
+          "notify_on_lower_non_zero": "Create persistent notification for lower non-zero source values"
         }
       },
       "reconfigure": {
