@@ -17,10 +17,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.energy_device_bridge.const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     CONF_ZERO_DROP_POLICY,
+    DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
     DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
     DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
@@ -63,6 +65,7 @@ async def test_config_flow_happy_path(hass: HomeAssistant) -> None:
     assert result["data"][CONF_CONSUMER_UUID]
     assert result["options"][CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
     assert result["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
+    assert result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
 
 
 @pytest.mark.asyncio
@@ -87,6 +90,10 @@ async def test_config_flow_accepts_missing_power_source(hass: HomeAssistant) -> 
     assert result["data"][CONF_SOURCE_POWER_ENTITY_ID] is None
     assert result["options"][CONF_ZERO_DROP_POLICY] == DEFAULT_ZERO_DROP_POLICY
     assert result["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] == DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
+    assert (
+        result["options"][CONF_COPY_SOURCE_HISTORY_ON_CREATE]
+        == DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
+    )
 
 
 @pytest.mark.asyncio
@@ -204,6 +211,7 @@ async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) ->
             CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e2",
             CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
             CONF_NOTIFY_ON_LOWER_NON_ZERO: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
         },
     )
     assert done["type"] is FlowResultType.CREATE_ENTRY
@@ -213,6 +221,7 @@ async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) ->
     assert entry.data[CONF_SOURCE_ENERGY_ENTITY_ID] == "sensor.e2"
     assert entry.options[CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
     assert entry.options[CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
+    assert entry.options[CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
 
 
 @pytest.mark.asyncio
@@ -241,6 +250,12 @@ async def test_existing_entry_defaults_for_new_options(hass: HomeAssistant) -> N
     assert (
         entry.options.get(CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO)
         == DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
+    )
+    assert (
+        entry.options.get(
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE, DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
+        )
+        == DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
     )
 
 
@@ -347,16 +362,19 @@ def test_translation_files_and_runtime_localization_contract() -> None:
         assert lang["config"]["step"]["user"]["data"]["consumer_name"]
         assert lang["config"]["step"]["user"]["data"]["zero_drop_policy"]
         assert lang["config"]["step"]["user"]["data"]["notify_on_lower_non_zero"]
+        assert lang["config"]["step"]["user"]["data"]["copy_source_history_on_create"]
         assert lang["config"]["step"]["reconfigure"]["data"]["source_energy_entity_id"]
         assert lang["config"]["abort"]["reconfigure_successful"]
         assert lang["options"]["step"]["init"]["data"]["source_energy_entity_id"]
         assert lang["options"]["step"]["init"]["data"]["zero_drop_policy"]
         assert lang["options"]["step"]["init"]["data"]["notify_on_lower_non_zero"]
+        assert lang["options"]["step"]["init"]["data"]["copy_source_history_on_create"]
         assert lang["selector"]["zero_drop_policy"]["options"]["ignore_zero_until_non_zero"]
         assert lang["entity"]["sensor"]["power"]["name"]
         assert lang["entity"]["sensor"]["energy"]["name"]
         assert lang["entity"]["button"]["adopt_current_source_as_baseline"]["name"]
         assert lang["entity"]["button"]["reset_tracker"]["name"]
+        assert lang["entity"]["button"]["import_source_history"]["name"]
 
 
 @pytest.mark.asyncio

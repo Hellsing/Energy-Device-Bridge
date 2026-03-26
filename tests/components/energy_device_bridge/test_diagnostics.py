@@ -9,6 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_device_bridge.const import (
     CONF_CONSUMER_NAME,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_CONSUMER_UUID,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
@@ -59,3 +60,7 @@ async def test_config_entry_diagnostics_redacts_sensitive_fields(hass: HomeAssis
     assert "ignored_negative_delta_count" in diagnostics["runtime"]
     assert diagnostics["entry"]["options"][CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
     assert diagnostics["entry"]["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
+    assert (
+        diagnostics["runtime"][CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
+        or diagnostics["entry"]["options"].get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True) is True
+    )

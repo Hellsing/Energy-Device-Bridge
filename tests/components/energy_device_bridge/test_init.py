@@ -8,6 +8,7 @@ from pathlib import Path
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -18,6 +19,7 @@ from custom_components.energy_device_bridge.const import (
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     DOMAIN,
+    SERVICE_IMPORT_SOURCE_HISTORY,
 )
 
 
@@ -32,6 +34,14 @@ def test_manifest_basics() -> None:
     assert manifest["integration_type"] == "device"
     assert manifest["iot_class"] == "calculated"
     assert manifest["version"]
+
+
+@pytest.mark.asyncio
+async def test_import_service_registered(hass) -> None:
+    """Integration-level import service is registered on setup."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+    assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_SOURCE_HISTORY)
 
 
 @pytest.mark.asyncio

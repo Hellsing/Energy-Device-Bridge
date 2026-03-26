@@ -15,6 +15,18 @@ from .const import (
     ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
     ATTR_LAST_ZERO_DROP_AT,
     ATTR_LOWER_VALUE_COUNT,
+    ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
+    ATTR_HISTORY_IMPORT_IN_PROGRESS,
+    ATTR_HISTORY_IMPORT_LAST_ERROR,
+    ATTR_HISTORY_IMPORT_LAST_FINISHED_AT,
+    ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START,
+    ATTR_HISTORY_IMPORT_LAST_RESULT,
+    ATTR_HISTORY_IMPORT_LAST_STARTED_AT,
+    ATTR_HISTORY_IMPORT_PERIOD_END,
+    ATTR_HISTORY_IMPORT_PERIOD_START,
+    ATTR_HISTORY_IMPORT_RETENTION_LIMITED,
+    ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED,
     ATTR_RESET_DETECTED_COUNT,
     ATTR_VIRTUAL_TOTAL_KWH,
     ATTR_ZERO_DROP_COUNT,
@@ -51,6 +63,18 @@ class EnergyTrackerState:
     lower_value_count: int = 0
     zero_drop_count: int = 0
     last_lower_value_event: dict[str, Any] | None = None
+    history_import_has_run: bool = False
+    history_import_in_progress: bool = False
+    history_import_last_started_at: str | None = None
+    history_import_last_finished_at: str | None = None
+    history_import_last_result: str | None = None
+    history_import_last_error: str | None = None
+    history_import_retention_limited: bool = False
+    history_import_samples_processed: int = 0
+    history_import_hours_imported: int = 0
+    history_import_period_start: str | None = None
+    history_import_period_end: str | None = None
+    history_import_last_imported_hour_start: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize state for storage."""
@@ -67,6 +91,20 @@ class EnergyTrackerState:
             ATTR_LOWER_VALUE_COUNT: self.lower_value_count,
             ATTR_ZERO_DROP_COUNT: self.zero_drop_count,
             ATTR_LAST_LOWER_VALUE_EVENT: self.last_lower_value_event,
+            ATTR_HISTORY_IMPORT_HAS_RUN: self.history_import_has_run,
+            ATTR_HISTORY_IMPORT_IN_PROGRESS: self.history_import_in_progress,
+            ATTR_HISTORY_IMPORT_LAST_STARTED_AT: self.history_import_last_started_at,
+            ATTR_HISTORY_IMPORT_LAST_FINISHED_AT: self.history_import_last_finished_at,
+            ATTR_HISTORY_IMPORT_LAST_RESULT: self.history_import_last_result,
+            ATTR_HISTORY_IMPORT_LAST_ERROR: self.history_import_last_error,
+            ATTR_HISTORY_IMPORT_RETENTION_LIMITED: self.history_import_retention_limited,
+            ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED: self.history_import_samples_processed,
+            ATTR_HISTORY_IMPORT_HOURS_IMPORTED: self.history_import_hours_imported,
+            ATTR_HISTORY_IMPORT_PERIOD_START: self.history_import_period_start,
+            ATTR_HISTORY_IMPORT_PERIOD_END: self.history_import_period_end,
+            ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: (
+                self.history_import_last_imported_hour_start
+            ),
         }
 
     @classmethod
@@ -94,6 +132,24 @@ class EnergyTrackerState:
             lower_value_count=int(data.get(ATTR_LOWER_VALUE_COUNT, 0)),
             zero_drop_count=int(data.get(ATTR_ZERO_DROP_COUNT, 0)),
             last_lower_value_event=data.get(ATTR_LAST_LOWER_VALUE_EVENT),
+            history_import_has_run=bool(data.get(ATTR_HISTORY_IMPORT_HAS_RUN, False)),
+            history_import_in_progress=bool(data.get(ATTR_HISTORY_IMPORT_IN_PROGRESS, False)),
+            history_import_last_started_at=data.get(ATTR_HISTORY_IMPORT_LAST_STARTED_AT),
+            history_import_last_finished_at=data.get(ATTR_HISTORY_IMPORT_LAST_FINISHED_AT),
+            history_import_last_result=data.get(ATTR_HISTORY_IMPORT_LAST_RESULT),
+            history_import_last_error=data.get(ATTR_HISTORY_IMPORT_LAST_ERROR),
+            history_import_retention_limited=bool(
+                data.get(ATTR_HISTORY_IMPORT_RETENTION_LIMITED, False)
+            ),
+            history_import_samples_processed=int(
+                data.get(ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED, 0)
+            ),
+            history_import_hours_imported=int(data.get(ATTR_HISTORY_IMPORT_HOURS_IMPORTED, 0)),
+            history_import_period_start=data.get(ATTR_HISTORY_IMPORT_PERIOD_START),
+            history_import_period_end=data.get(ATTR_HISTORY_IMPORT_PERIOD_END),
+            history_import_last_imported_hour_start=data.get(
+                ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START
+            ),
         )
 
 

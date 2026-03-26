@@ -17,6 +17,7 @@ Each config entry creates one virtual device with:
 - Persistent energy accumulation state across reloads and restarts
 - Source energy normalization to kWh (`Wh` and `kWh` supported)
 - Maintenance actions to adopt baseline, reset tracker, or set virtual total
+- One-time source-history replay/import into bridge statistics (copy on create + manual trigger)
 - Configurable lower-source handling policies for zero drops and lower non-zero anomalies
 - Built-in Repairs issues for missing/invalid source sensor conditions
 - Diagnostics download with redacted user/source details
@@ -44,6 +45,7 @@ During setup, provide:
 - **Consumer name**
 - **Source power sensor** (optional, must be a sensor with `W` or `kW` when configured)
 - **Source energy sensor** (must be a sensor with `Wh` or `kWh`)
+- **Copy source history on create** (default enabled): replays available raw source history through bridge logic and imports resulting historical bridge statistics
 
 If setup inputs need to change later, use the integration **Configure** gear icon.
 
@@ -71,8 +73,18 @@ Maintenance actions:
 - **Adopt current source as baseline**: stores the current valid source value as baseline without changing virtual total.
 - **Reset tracker**: clears baseline/metadata and sets virtual total to `0 kWh`.
 - **Set virtual total**: sets the virtual total explicitly (kWh), then refreshes baseline from current source when possible.
+- **Import source history**: replays available source history in chronological order and imports bridge statistics history.
 
-You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.
+You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.  
+Manual history import service: `energy_device_bridge.import_source_history` (target by `config_entry_id` or bridge `entity_id`).
+
+History import behavior:
+- Uses Home Assistant recorder/history/statistics helper APIs only.
+- Does **not** clone raw recorder rows or write SQL directly.
+- Replays exact retained source history through the same bridge rules used for live updates.
+- Imports hourly bridge statistics in Home Assistant-native format.
+- Import is idempotent and resumes from already imported bridge statistics windows.
+- If older raw source history is purged, v1 does not reconstruct drop events from long-term hourly aggregates.
 
 Examples:
 - **Transient zero from flaky source**: use `ignore_zero_until_non_zero` to avoid anchoring baseline to temporary zeros.
@@ -115,6 +127,7 @@ logger:
 
 - Exactly one power source and one energy source are mapped per config entry.
 - Integrations that expose energy in unsupported units must be normalized upstream before selection.
+- Historical replay can only use raw source history retained in recorder; older purged raw history cannot be reconstructed in v1.
 
 ## Contributing
 

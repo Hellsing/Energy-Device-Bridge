@@ -32,6 +32,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 
 from . import EnergyDeviceBridgeConfigEntry
+from .bridge_logic import apply_source_sample
 from .const import (
     ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
@@ -42,10 +43,23 @@ from .const import (
     ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
     ATTR_LAST_ZERO_DROP_AT,
     ATTR_LOWER_VALUE_COUNT,
+    ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
+    ATTR_HISTORY_IMPORT_IN_PROGRESS,
+    ATTR_HISTORY_IMPORT_LAST_ERROR,
+    ATTR_HISTORY_IMPORT_LAST_FINISHED_AT,
+    ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START,
+    ATTR_HISTORY_IMPORT_LAST_RESULT,
+    ATTR_HISTORY_IMPORT_LAST_STARTED_AT,
+    ATTR_HISTORY_IMPORT_PERIOD_END,
+    ATTR_HISTORY_IMPORT_PERIOD_START,
+    ATTR_HISTORY_IMPORT_RETENTION_LIMITED,
+    ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED,
     ATTR_RESET_DETECTED_COUNT,
     ATTR_VALUE_KWH,
     ATTR_ZERO_DROP_COUNT,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_ZERO_DROP_POLICY,
     DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
     DEFAULT_ZERO_DROP_POLICY,
@@ -63,7 +77,6 @@ from .const import (
 from .models import ConsumerConfig, EnergyTrackerState
 
 _LOGGER = logging.getLogger(__name__)
-_LOWER_VALUE_EPSILON = 1e-9
 
 _POWER_DESCRIPTION = SensorEntityDescription(
     key="power",
@@ -351,42 +364,28 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         if source_kwh is None:
             return
 
-        if self._tracker.last_source_entity_id != self._source_entity_id:
-            self._tracker.last_source_entity_id = self._source_entity_id
-            self._tracker.last_source_energy_value_kwh = None
-            self._tracker.awaiting_non_zero_after_zero_drop = False
-
-        if self._tracker.last_source_energy_value_kwh is None:
-            self._update_baseline(source_kwh)
-            self._schedule_save()
-            return
-
-        if self._tracker.awaiting_non_zero_after_zero_drop:
-            if source_kwh <= _LOWER_VALUE_EPSILON:
-                return
-            self._tracker.awaiting_non_zero_after_zero_drop = False
-            self._update_baseline(source_kwh)
-            self._schedule_save()
-            return
-
-        previous_kwh = self._tracker.last_source_energy_value_kwh
-        delta = source_kwh - previous_kwh
-        if delta > _LOWER_VALUE_EPSILON:
-            self._tracker.virtual_total_kwh += delta
-            self._update_baseline(source_kwh)
-        elif delta < -_LOWER_VALUE_EPSILON:
+        result = apply_source_sample(
+            self._tracker,
+            source_entity_id=self._source_entity_id,
+            source_kwh=source_kwh,
+            sample_ts_iso=dt_util.utcnow().isoformat(),
+            zero_drop_policy=self._zero_drop_policy,
+        )
+        if result.event_kind in {"zero_drop_ignored_until_non_zero", "lower_non_zero"}:
             _LOGGER.debug(
-                "Source energy reset/rollover for %s: previous=%s current=%s",
+                "Source energy reset/rollover for %s: kind=%s previous=%s current=%s",
                 self._source_entity_id,
-                previous_kwh,
-                source_kwh,
+                result.event_kind,
+                result.previous_kwh,
+                result.new_kwh if result.new_kwh is not None else source_kwh,
             )
-            if source_kwh <= _LOWER_VALUE_EPSILON:
-                self._handle_zero_drop(source_kwh)
-            else:
-                self._handle_lower_non_zero(previous_kwh, source_kwh)
-        else:
-            self._update_baseline(source_kwh)
+        if (
+            result.event_kind == "lower_non_zero"
+            and self._notify_on_lower_non_zero
+            and result.previous_kwh is not None
+            and result.new_kwh is not None
+        ):
+            self._create_lower_non_zero_notification(result.previous_kwh, result.new_kwh)
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
         self._schedule_save()
 
@@ -429,14 +428,6 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             )
         )
 
-    def _update_baseline(self, source_kwh: float) -> None:
-        """Update source baseline metadata from a valid reading."""
-        self._tracker.last_source_entity_id = self._source_entity_id
-        self._tracker.last_source_energy_value_kwh = source_kwh
-        self._tracker.awaiting_non_zero_after_zero_drop = False
-        self._tracker.last_valid_source_sample_ts = dt_util.utcnow().isoformat()
-        self._tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
-
     def _notification_id(self) -> str:
         """Build deterministic persistent-notification id for this entry."""
         return f"{DOMAIN}_{self._entry.entry_id}_lower_non_zero"
@@ -457,44 +448,6 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             title="Energy Device Bridge: lower source reading detected",
             notification_id=self._notification_id(),
         )
-
-    def _handle_zero_drop(self, source_kwh: float) -> None:
-        """Apply configured zero-drop behavior without decreasing virtual total."""
-        _ = source_kwh
-        self._tracker.ignored_negative_delta_count += 1
-        self._tracker.reset_detected_count += 1
-        self._tracker.zero_drop_count += 1
-        self._tracker.last_zero_drop_at = dt_util.utcnow().isoformat()
-        self._tracker.last_lower_value_event = {
-            "kind": "zero_drop",
-            "source_entity_id": self._source_entity_id,
-            "timestamp": self._tracker.last_zero_drop_at,
-        }
-
-        if self._zero_drop_policy == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO:
-            self._tracker.awaiting_non_zero_after_zero_drop = True
-            return
-
-        self._tracker.awaiting_non_zero_after_zero_drop = False
-        self._update_baseline(0.0)
-
-    def _handle_lower_non_zero(self, previous_kwh: float, source_kwh: float) -> None:
-        """Handle lower non-zero reading by adopting new baseline and optional notify."""
-        now = dt_util.utcnow().isoformat()
-        self._tracker.ignored_negative_delta_count += 1
-        self._tracker.reset_detected_count += 1
-        self._tracker.lower_value_count += 1
-        self._tracker.awaiting_non_zero_after_zero_drop = False
-        self._tracker.last_lower_value_event = {
-            "kind": "lower_non_zero",
-            "source_entity_id": self._source_entity_id,
-            "previous_kwh": previous_kwh,
-            "new_kwh": source_kwh,
-            "timestamp": now,
-        }
-        if self._notify_on_lower_non_zero:
-            self._create_lower_non_zero_notification(previous_kwh, source_kwh)
-        self._update_baseline(source_kwh)
 
     async def async_adopt_current_source_as_baseline(self) -> None:
         """Adopt current valid source value as new baseline without changing total."""
@@ -551,6 +504,27 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             ATTR_LAST_LOWER_VALUE_EVENT: self._tracker.last_lower_value_event,
             CONF_ZERO_DROP_POLICY: self._zero_drop_policy,
             CONF_NOTIFY_ON_LOWER_NON_ZERO: self._notify_on_lower_non_zero,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: bool(
+                self._entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True)
+            ),
+            ATTR_HISTORY_IMPORT_HAS_RUN: self._tracker.history_import_has_run,
+            ATTR_HISTORY_IMPORT_IN_PROGRESS: self._tracker.history_import_in_progress,
+            ATTR_HISTORY_IMPORT_LAST_STARTED_AT: self._tracker.history_import_last_started_at,
+            ATTR_HISTORY_IMPORT_LAST_FINISHED_AT: self._tracker.history_import_last_finished_at,
+            ATTR_HISTORY_IMPORT_LAST_RESULT: self._tracker.history_import_last_result,
+            ATTR_HISTORY_IMPORT_LAST_ERROR: self._tracker.history_import_last_error,
+            ATTR_HISTORY_IMPORT_RETENTION_LIMITED: (
+                self._tracker.history_import_retention_limited
+            ),
+            ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED: (
+                self._tracker.history_import_samples_processed
+            ),
+            ATTR_HISTORY_IMPORT_HOURS_IMPORTED: self._tracker.history_import_hours_imported,
+            ATTR_HISTORY_IMPORT_PERIOD_START: self._tracker.history_import_period_start,
+            ATTR_HISTORY_IMPORT_PERIOD_END: self._tracker.history_import_period_end,
+            ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: (
+                self._tracker.history_import_last_imported_hour_start
+            ),
         }
 
 

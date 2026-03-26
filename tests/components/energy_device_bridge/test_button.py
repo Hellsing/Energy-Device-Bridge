@@ -45,12 +45,19 @@ async def test_button_entities_are_created_with_translation_names(hass: HomeAssi
     reset_button_id = entity_registry.async_get_entity_id(
         "button", DOMAIN, "consumer-button_reset_tracker"
     )
+    import_button_id = entity_registry.async_get_entity_id(
+        "button", DOMAIN, "consumer-button_import_source_history"
+    )
     assert adopt_button_id is not None
     assert reset_button_id is not None
+    assert import_button_id is not None
 
     adopt_state = hass.states.get(adopt_button_id)
     reset_state = hass.states.get(reset_button_id)
+    import_state = hass.states.get(import_button_id)
     assert adopt_state is not None
     assert reset_state is not None
+    assert import_state is not None
     assert adopt_state.name.endswith("Adopt current source as baseline")
     assert reset_state.name.endswith("Reset tracker")
+    assert import_state.name.endswith("Import source history")

@@ -26,10 +26,12 @@ from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 from .const import (
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     CONF_ZERO_DROP_POLICY,
+    DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
     DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
     DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
@@ -109,6 +111,13 @@ def _options_selector_schema(defaults: dict[str, Any]) -> vol.Schema:
                 default=defaults.get(
                     CONF_NOTIFY_ON_LOWER_NON_ZERO,
                     DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+                ),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+                default=defaults.get(
+                    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+                    DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
                 ),
             ): selector.BooleanSelector(),
         }
@@ -318,6 +327,12 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                         DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
                     )
                 )
+                selected_copy_source_history_on_create = bool(
+                    user_input.get(
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+                        DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
+                    )
+                )
                 data = {
                     CONF_CONSUMER_UUID: consumer_uuid,
                     **result.validated_data,
@@ -329,6 +344,9 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                         options={
                             CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
                             CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                            CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
+                                selected_copy_source_history_on_create
+                            ),
                         },
                     )
                 except TypeError:
@@ -340,6 +358,9 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                     entry_result["options"] = {
                         CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
                         CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
+                            selected_copy_source_history_on_create
+                        ),
                     }
                     return entry_result
             errors = result.errors
@@ -438,6 +459,9 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
             CONF_NOTIFY_ON_LOWER_NON_ZERO: config_entry.options.get(
                 CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
             ),
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: config_entry.options.get(
+                CONF_COPY_SOURCE_HISTORY_ON_CREATE, DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
+            ),
         }
         errors: dict[str, str] = {}
 
@@ -452,6 +476,9 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
                 selected_zero_drop_policy = user_input[CONF_ZERO_DROP_POLICY]
                 selected_notify_on_lower_non_zero = bool(
                     user_input[CONF_NOTIFY_ON_LOWER_NON_ZERO]
+                )
+                selected_copy_source_history_on_create = bool(
+                    user_input[CONF_COPY_SOURCE_HISTORY_ON_CREATE]
                 )
                 self.hass.config_entries.async_update_entry(
                     config_entry,
@@ -468,6 +495,9 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
                         **config_entry.options,
                         CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
                         CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
+                            selected_copy_source_history_on_create
+                        ),
                     },
                 )
             errors = result.errors

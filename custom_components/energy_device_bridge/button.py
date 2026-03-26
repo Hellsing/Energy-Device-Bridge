@@ -8,6 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import EnergyDeviceBridgeConfigEntry
+from .history_import import async_request_history_import
 from .models import ConsumerConfig
 
 _ADOPT_BASELINE_DESCRIPTION = ButtonEntityDescription(
@@ -18,6 +19,11 @@ _ADOPT_BASELINE_DESCRIPTION = ButtonEntityDescription(
 _RESET_TRACKER_DESCRIPTION = ButtonEntityDescription(
     key="reset_tracker",
     translation_key="reset_tracker",
+)
+
+_IMPORT_SOURCE_HISTORY_DESCRIPTION = ButtonEntityDescription(
+    key="import_source_history",
+    translation_key="import_source_history",
 )
 
 
@@ -68,6 +74,25 @@ class EnergyDeviceBridgeResetTrackerButton(EnergyDeviceBridgeButtonBase):
         await self._energy_sensor.async_reset_tracker()
 
 
+class EnergyDeviceBridgeImportSourceHistoryButton(EnergyDeviceBridgeButtonBase):
+    """Trigger one-time history replay/import for this bridge entry."""
+
+    entity_description = _IMPORT_SOURCE_HISTORY_DESCRIPTION
+
+    def __init__(self, entry: EnergyDeviceBridgeConfigEntry) -> None:
+        super().__init__(entry)
+        self._attr_unique_id = f"{self._consumer.consumer_uuid}_import_source_history"
+
+    async def async_press(self) -> None:
+        """Handle button press."""
+        await async_request_history_import(
+            self.hass,
+            entry=self._entry,
+            trigger="button",
+            reject_if_running=True,
+        )
+
+
 async def async_setup_entry(
     _hass: HomeAssistant,
     entry: EnergyDeviceBridgeConfigEntry,
@@ -78,5 +103,6 @@ async def async_setup_entry(
         [
             EnergyDeviceBridgeAdoptBaselineButton(entry),
             EnergyDeviceBridgeResetTrackerButton(entry),
+            EnergyDeviceBridgeImportSourceHistoryButton(entry),
         ]
     )

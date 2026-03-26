@@ -9,7 +9,8 @@
           "source_power_entity_id": "Quell-Leistungssensor (optional)",
           "source_energy_entity_id": "Quell-Energiesensor",
           "zero_drop_policy": "Verhalten bei Quellwert 0",
-          "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen"
+          "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen",
+          "copy_source_history_on_create": "Verfuegbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
         }
       },
       "reconfigure": {
@@ -48,7 +49,8 @@
           "source_power_entity_id": "Quell-Leistungssensor (optional)",
           "source_energy_entity_id": "Quell-Energiesensor",
           "zero_drop_policy": "Verhalten bei Quellwert 0",
-          "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen"
+          "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen",
+          "copy_source_history_on_create": "Verfuegbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
         }
       }
     },
@@ -80,6 +82,9 @@
       },
       "reset_tracker": {
         "name": "Tracker zurücksetzen"
+      },
+      "import_source_history": {
+        "name": "Quellhistorie importieren"
       }
     },
     "sensor": {
@@ -107,6 +112,26 @@
     "energy_state_class_invalid": {
       "title": "state_class der Energiequelle ist ungültig",
       "description": "Die state_class `{state_class}` ist ungültig. Verwende `total` oder `total_increasing`."
+    }
+  },
+  "exceptions": {
+    "history_import_target_required": {
+      "message": "Bitte entweder config_entry_id oder bridge entity_id angeben."
+    },
+    "history_import_entry_not_found": {
+      "message": "Energy Device Bridge Eintrag `{entry_id}` wurde nicht gefunden."
+    },
+    "history_import_entry_not_loaded": {
+      "message": "Der ausgewaehlte Energy Device Bridge Eintrag ist nicht geladen."
+    },
+    "history_import_entity_not_found": {
+      "message": "Entitaet `{entity_id}` wurde nicht gefunden."
+    },
+    "history_import_entity_wrong_domain": {
+      "message": "Entitaet `{entity_id}` gehoert nicht zu Energy Device Bridge."
+    },
+    "history_import_in_progress": {
+      "message": "Ein Quellhistorie-Import laeuft fuer diese Bridge bereits."
     }
   }
 }

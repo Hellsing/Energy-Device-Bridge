@@ -5,13 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, SERVICE_IMPORT_SOURCE_HISTORY
+from .history_import import (
+    async_request_history_import,
+    async_schedule_copy_on_create,
+    resolve_entry_for_service,
+)
 from .models import ConsumerConfig, resolve_consumer_config
 from .store import EnergyDeviceBridgeStore
 
@@ -109,6 +118,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfig
         active_issue_ids=set(),
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    hass.async_create_task(async_schedule_copy_on_create(hass, entry))
+    return True
+
+
+async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
+    """Set up integration-level services."""
+    hass.data.setdefault(DOMAIN, {})
+    if hass.data[DOMAIN].get("services_registered"):
+        return True
+
+    async def _handle_import_service(call) -> None:
+        entry = resolve_entry_for_service(
+            hass,
+            config_entry_id=call.data.get("config_entry_id"),
+            entity_id=call.data.get("entity_id"),
+        )
+        accepted = await async_request_history_import(
+            hass,
+            entry=entry,
+            trigger="service",
+            reject_if_running=True,
+        )
+        if not accepted:
+            raise ServiceValidationError(
+                "History import request was not accepted",
+                translation_domain=DOMAIN,
+                translation_key="history_import_in_progress",
+            )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_IMPORT_SOURCE_HISTORY,
+        _handle_import_service,
+        schema=vol.Schema(
+            {
+                vol.Optional("config_entry_id"): cv.string,
+                vol.Optional("entity_id"): cv.entity_id,
+            }
+        ),
+    )
+    hass.data[DOMAIN]["services_registered"] = True
     return True
 
 

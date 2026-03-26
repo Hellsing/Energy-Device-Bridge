@@ -10,10 +10,23 @@ from homeassistant.core import HomeAssistant
 from . import EnergyDeviceBridgeConfigEntry
 from .const import (
     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
+    ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
+    ATTR_HISTORY_IMPORT_IN_PROGRESS,
+    ATTR_HISTORY_IMPORT_LAST_ERROR,
+    ATTR_HISTORY_IMPORT_LAST_FINISHED_AT,
+    ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START,
+    ATTR_HISTORY_IMPORT_LAST_RESULT,
+    ATTR_HISTORY_IMPORT_LAST_STARTED_AT,
+    ATTR_HISTORY_IMPORT_PERIOD_END,
+    ATTR_HISTORY_IMPORT_PERIOD_START,
+    ATTR_HISTORY_IMPORT_RETENTION_LIMITED,
+    ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED,
     ATTR_IGNORED_NEGATIVE_DELTA_COUNT,
     ATTR_LAST_SOURCE_ENTITY_ID,
     ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
     ATTR_RESET_DETECTED_COUNT,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_CONSUMER_NAME,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
@@ -61,6 +74,49 @@ async def async_get_config_entry_diagnostics(
                     ),
                     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT: (
                         stored_state.current_normalized_source_unit if stored_state else None
+                    ),
+                    CONF_COPY_SOURCE_HISTORY_ON_CREATE: entry.options.get(
+                        CONF_COPY_SOURCE_HISTORY_ON_CREATE, True
+                    ),
+                    ATTR_HISTORY_IMPORT_HAS_RUN: (
+                        stored_state.history_import_has_run if stored_state else False
+                    ),
+                    ATTR_HISTORY_IMPORT_IN_PROGRESS: (
+                        stored_state.history_import_in_progress if stored_state else False
+                    ),
+                    ATTR_HISTORY_IMPORT_LAST_STARTED_AT: (
+                        stored_state.history_import_last_started_at if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_LAST_FINISHED_AT: (
+                        stored_state.history_import_last_finished_at if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_LAST_RESULT: (
+                        stored_state.history_import_last_result if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_LAST_ERROR: (
+                        stored_state.history_import_last_error if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_RETENTION_LIMITED: (
+                        stored_state.history_import_retention_limited
+                        if stored_state
+                        else False
+                    ),
+                    ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED: (
+                        stored_state.history_import_samples_processed if stored_state else 0
+                    ),
+                    ATTR_HISTORY_IMPORT_HOURS_IMPORTED: (
+                        stored_state.history_import_hours_imported if stored_state else 0
+                    ),
+                    ATTR_HISTORY_IMPORT_PERIOD_START: (
+                        stored_state.history_import_period_start if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_PERIOD_END: (
+                        stored_state.history_import_period_end if stored_state else None
+                    ),
+                    ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: (
+                        stored_state.history_import_last_imported_hour_start
+                        if stored_state
+                        else None
                     ),
                 }
             ),
