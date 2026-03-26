@@ -62,6 +62,14 @@
     }
   },
   "entity": {
+    "button": {
+      "adopt_current_source_as_baseline": {
+        "name": "Adopt current source as baseline"
+      },
+      "reset_tracker": {
+        "name": "Reset tracker"
+      }
+    },
     "sensor": {
       "power": {
         "name": "Power"
@@ -69,6 +77,24 @@
       "energy": {
         "name": "Energy"
       }
+    }
+  },
+  "issues": {
+    "source_entity_missing": {
+      "title": "Configured source sensor is missing",
+      "description": "The configured source sensor `{entity_id}` no longer exists. Update the integration configuration to select a valid source."
+    },
+    "energy_unit_unsupported": {
+      "title": "Configured energy unit is unsupported",
+      "description": "Energy source unit `{unit}` is unsupported. Use an energy sensor reporting `Wh` or `kWh`."
+    },
+    "power_unit_unsupported": {
+      "title": "Configured power unit is unsupported",
+      "description": "Power source unit `{unit}` is unsupported. Use a power sensor reporting `W` or `kW`."
+    },
+    "energy_state_class_invalid": {
+      "title": "Energy source state class is invalid",
+      "description": "Energy source state_class `{state_class}` is invalid. Use `total` or `total_increasing`."
     }
   }
 }

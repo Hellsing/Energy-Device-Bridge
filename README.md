@@ -16,6 +16,8 @@ Each config entry creates one virtual device with:
 - Configuration flow for changing sources/name from the integration gear menu
 - Persistent energy accumulation state across reloads and restarts
 - Source energy normalization to kWh (`Wh` and `kWh` supported)
+- Maintenance actions to adopt baseline, reset tracker, or set virtual total
+- Built-in Repairs issues for missing/invalid source sensor conditions
 - Diagnostics download with redacted user/source details
 
 ## Installation
@@ -56,10 +58,18 @@ Accumulation logic:
 4. Add only positive deltas to the virtual total.
 5. Ignore negative deltas (source reset/rollover) so the virtual total never decreases.
 
+Maintenance actions:
+- **Adopt current source as baseline**: stores the current valid source value as baseline without changing virtual total.
+- **Reset tracker**: clears baseline/metadata and sets virtual total to `0 kWh`.
+- **Set virtual total**: sets the virtual total explicitly (kWh), then refreshes baseline from current source when possible.
+
+You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.
+
 ## Data updates
 
 - Event-driven updates based on source sensor state changes
 - No polling loop is used by bridge entities
+- Storage writes are coalesced/debounced during rapid source updates
 - Persisted tracker state is restored on startup/reload
 
 ## Reauthentication and reconfigure
@@ -85,6 +95,7 @@ logger:
 - Ensure selected source entities are `sensor` entities.
 - Confirm source units are supported (`W`/`kW` for power, `Wh`/`kWh` for energy).
 - If no values appear, verify source entities are available and numeric.
+- Check **Repairs** for actionable runtime issues when source entities disappear or become invalid.
 
 ## Known limitations
 

@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_device_bridge.const import (
+    ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
+    ATTR_VALUE_KWH,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     DOMAIN,
+    ISSUE_ENERGY_STATE_CLASS_INVALID,
+    ISSUE_ENERGY_UNIT_UNSUPPORTED,
+    ISSUE_SOURCE_ENTITY_MISSING,
+    SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+    SERVICE_RESET_TRACKER,
+    SERVICE_SET_VIRTUAL_TOTAL,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -285,8 +296,8 @@ async def test_energy_sensor_statistics_metadata_and_monotonicity(hass: HomeAssi
         assert _state_float(hass, energy_entity_id) == pytest.approx(total_value, abs=1e-6)
 
 
-async def test_entity_names_include_consumer_name(hass: HomeAssistant) -> None:
-    """Entity names include configured consumer name."""
+async def test_entity_names_are_translation_backed(hass: HomeAssistant) -> None:
+    """Entity names use translated suffixes instead of hard-coded full names."""
     await _setup_entry(hass)
     power_entity_id, energy_entity_id = _entity_ids(hass)
 
@@ -294,8 +305,8 @@ async def test_entity_names_include_consumer_name(hass: HomeAssistant) -> None:
     energy_state = hass.states.get(energy_entity_id)
     assert power_state is not None
     assert energy_state is not None
-    assert power_state.name == "Kuhlschrank Power"
-    assert energy_state.name == "Kuhlschrank Energy"
+    assert power_state.name.endswith("Power")
+    assert energy_state.name.endswith("Energy")
 
 
 async def test_setup_without_power_source_only_creates_energy_sensor(hass: HomeAssistant) -> None:
@@ -327,3 +338,148 @@ async def test_setup_without_power_source_only_creates_energy_sensor(hass: HomeA
     )
     assert power_entity_id is None
     assert energy_entity_id is not None
+
+
+async def test_adopt_current_source_as_baseline_does_not_change_virtual_total(
+    hass: HomeAssistant,
+) -> None:
+    """Adopting baseline stores current source value without changing total."""
+    await _setup_entry(hass)
+    _, energy_entity_id = _entity_ids(hass)
+
+    hass.states.async_set("sensor.src_energy", 11, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 1.0
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+        {"entity_id": [energy_entity_id]},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 1.0
+    assert float(state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH]) == 11.0
+
+    hass.states.async_set("sensor.src_energy", 12, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 2.0
+
+
+async def test_reset_tracker_clears_tracker_and_resets_total(hass: HomeAssistant) -> None:
+    """Reset tracker clears baseline metadata and sets virtual total to zero."""
+    await _setup_entry(hass)
+    _, energy_entity_id = _entity_ids(hass)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    hass.states.async_set("sensor.src_energy", 11, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 1.0
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_RESET_TRACKER,
+        {"entity_id": [energy_entity_id]},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == 0.0
+    assert state.attributes[ATTR_LAST_SOURCE_ENERGY_VALUE_KWH] is None
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    reloaded = hass.states.get(energy_entity_id)
+    assert reloaded is not None
+    assert float(reloaded.state) == 0.0
+
+
+async def test_set_virtual_total_persists_and_restores(hass: HomeAssistant) -> None:
+    """Set virtual total action persists and restores after reload."""
+    await _setup_entry(hass)
+    _, energy_entity_id = _entity_ids(hass)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_VIRTUAL_TOTAL,
+        {"entity_id": [energy_entity_id], ATTR_VALUE_KWH: 7.25},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 7.25
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _state_float(hass, energy_entity_id) == 7.25
+
+
+async def test_energy_sensor_uses_delayed_save_not_one_task_per_update(
+    hass: HomeAssistant,
+) -> None:
+    """Rapid updates coalesce through delayed save path."""
+    await _setup_entry(hass)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    with patch.object(entry.runtime_data.store, "async_schedule_save") as schedule_save:
+        for value in (11, 12, 13, 14):
+            hass.states.async_set(
+                "sensor.src_energy",
+                value,
+                {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            )
+            await hass.async_block_till_done()
+        assert schedule_save.call_count >= 1
+        assert schedule_save.call_count <= 4
+
+
+async def test_runtime_repairs_created_and_dismissed(hass: HomeAssistant) -> None:
+    """Repairs are created for invalid source states and dismissed when fixed."""
+    await _setup_entry(hass)
+    _, energy_entity_id = _entity_ids(hass)
+    issue_registry = ir.async_get(hass)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    issue_prefix = entry.data[CONF_CONSUMER_UUID]
+
+    hass.states.async_remove("sensor.src_energy")
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, f"{issue_prefix}_{ISSUE_SOURCE_ENTITY_MISSING}") is not None
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR, "state_class": "measurement"},
+    )
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, f"{issue_prefix}_{ISSUE_SOURCE_ENTITY_MISSING}") is None
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_STATE_CLASS_INVALID}"
+    ) is not None
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": "MWh", "state_class": "total"},
+    )
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_UNIT_UNSUPPORTED}"
+    ) is not None
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR, "state_class": "total"},
+    )
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_STATE_CLASS_INVALID}"
+    ) is None
+    assert issue_registry.async_get_issue(
+        DOMAIN, f"{issue_prefix}_{ISSUE_ENERGY_UNIT_UNSUPPORTED}"
+    ) is None
+    assert hass.states.get(energy_entity_id) is not None

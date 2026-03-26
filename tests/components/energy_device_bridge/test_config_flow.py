@@ -263,6 +263,31 @@ async def test_config_flow_accepts_w_and_wh_units(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
+@pytest.mark.asyncio
+async def test_config_flow_accepts_generic_sensor_without_device_class(
+    hass: HomeAssistant,
+) -> None:
+    """Flow accepts plain sensor entities when units and values are valid."""
+    await _init_integration(hass)
+    hass.states.async_set("sensor.generic_power", 300, {"unit_of_measurement": UnitOfPower.WATT})
+    hass.states.async_set(
+        "sensor.generic_energy",
+        3,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data={
+            CONF_CONSUMER_NAME: "Generic",
+            CONF_SOURCE_POWER_ENTITY_ID: "sensor.generic_power",
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.generic_energy",
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
 def test_translation_files_and_runtime_localization_contract() -> None:
     """Ensure translation files carry flow and entity keys for custom components."""
     base = Path("custom_components/energy_device_bridge")
@@ -281,6 +306,8 @@ def test_translation_files_and_runtime_localization_contract() -> None:
         assert lang["options"]["step"]["init"]["data"]["source_energy_entity_id"]
         assert lang["entity"]["sensor"]["power"]["name"]
         assert lang["entity"]["sensor"]["energy"]["name"]
+        assert lang["entity"]["button"]["adopt_current_source_as_baseline"]["name"]
+        assert lang["entity"]["button"]["reset_tracker"]["name"]
 
 
 @pytest.mark.asyncio

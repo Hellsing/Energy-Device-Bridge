@@ -10,7 +10,6 @@ from uuid import uuid4
 import voluptuous as vol
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
-from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import (
@@ -73,7 +72,6 @@ def _selector_schema(defaults: dict[str, Any]) -> vol.Schema:
             power_key: selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=[SENSOR_DOMAIN],
-                    device_class=[SensorDeviceClass.POWER],
                 )
             ),
             vol.Required(
@@ -82,7 +80,6 @@ def _selector_schema(defaults: dict[str, Any]) -> vol.Schema:
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=[SENSOR_DOMAIN],
-                    device_class=[SensorDeviceClass.ENERGY],
                 )
             ),
         }
@@ -153,6 +150,9 @@ def _validate_user_input(
     *,
     skip_entry_id: str | None = None,
 ) -> FlowValidationResult:
+    def _set_error(field: str, value: str) -> None:
+        errors.setdefault(field, value)
+
     errors: dict[str, str] = {}
     entity_registry = er.async_get(hass)
     consumer_name = str(user_input[CONF_CONSUMER_NAME]).strip()
@@ -162,10 +162,10 @@ def _validate_user_input(
     source_energy_entity_id = user_input[CONF_SOURCE_ENERGY_ENTITY_ID]
 
     if not consumer_name:
-        errors[CONF_CONSUMER_NAME] = "name_required"
+        _set_error(CONF_CONSUMER_NAME, "name_required")
 
     if source_power_entity_id and source_power_entity_id == source_energy_entity_id:
-        errors["base"] = "same_entity_pair"
+        _set_error("base", "same_entity_pair")
 
     if _is_duplicate_pair(
         current_entries,
@@ -173,7 +173,7 @@ def _validate_user_input(
         source_energy_entity_id,
         skip_entry_id=skip_entry_id,
     ):
-        errors["base"] = "duplicate_pair"
+        _set_error("base", "duplicate_pair")
 
     entities_to_validate = [
         (CONF_SOURCE_ENERGY_ENTITY_ID, source_energy_entity_id),
@@ -183,10 +183,10 @@ def _validate_user_input(
 
     for field, entity_id in entities_to_validate:
         if not _validate_entity_kind(entity_id):
-            errors[field] = "must_be_sensor"
+            _set_error(field, "must_be_sensor")
             continue
         if not entity_registry.async_is_registered(entity_id) and hass.states.get(entity_id) is None:
-            errors[field] = "entity_not_found"
+            _set_error(field, "entity_not_found")
 
     if source_power_entity_id:
         power_state = hass.states.get(source_power_entity_id)
@@ -194,25 +194,25 @@ def _validate_user_input(
             power_numeric = _parse_numeric_state_value(power_state.state)
             power_unit = power_state.attributes.get("unit_of_measurement")
             if power_numeric is None and power_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-                errors[CONF_SOURCE_POWER_ENTITY_ID] = "power_not_numeric"
+                _set_error(CONF_SOURCE_POWER_ENTITY_ID, "power_not_numeric")
             elif power_unit and not _is_power_unit_supported(power_unit):
-                errors[CONF_SOURCE_POWER_ENTITY_ID] = "invalid_power_unit"
+                _set_error(CONF_SOURCE_POWER_ENTITY_ID, "invalid_power_unit")
 
     energy_state = hass.states.get(source_energy_entity_id)
     if energy_state is not None:
         energy_numeric = _parse_numeric_state_value(energy_state.state)
         energy_unit = energy_state.attributes.get("unit_of_measurement")
         if energy_numeric is None and energy_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-            errors[CONF_SOURCE_ENERGY_ENTITY_ID] = "energy_not_numeric"
+            _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "energy_not_numeric")
         if not _is_energy_unit_supported(energy_unit):
-            errors[CONF_SOURCE_ENERGY_ENTITY_ID] = "invalid_energy_unit"
+            _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "invalid_energy_unit")
         state_class = energy_state.attributes.get("state_class")
         if state_class not in (
             SensorStateClass.TOTAL,
             SensorStateClass.TOTAL_INCREASING,
             None,
         ):
-            errors[CONF_SOURCE_ENERGY_ENTITY_ID] = "invalid_energy_state_class"
+            _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "invalid_energy_state_class")
 
     if errors:
         return FlowValidationResult(errors=errors)

@@ -62,6 +62,14 @@
     }
   },
   "entity": {
+    "button": {
+      "adopt_current_source_as_baseline": {
+        "name": "Aktuellen Quellwert als Basis übernehmen"
+      },
+      "reset_tracker": {
+        "name": "Tracker zurücksetzen"
+      }
+    },
     "sensor": {
       "power": {
         "name": "Leistung"
@@ -69,6 +77,24 @@
       "energy": {
         "name": "Energie"
       }
+    }
+  },
+  "issues": {
+    "source_entity_missing": {
+      "title": "Konfigurierter Quellsensor fehlt",
+      "description": "Der konfigurierte Quellsensor `{entity_id}` existiert nicht mehr. Aktualisiere die Integration und wähle einen gültigen Sensor."
+    },
+    "energy_unit_unsupported": {
+      "title": "Konfigurierte Energieeinheit wird nicht unterstützt",
+      "description": "Die Energieeinheit `{unit}` wird nicht unterstützt. Verwende einen Sensor mit `Wh` oder `kWh`."
+    },
+    "power_unit_unsupported": {
+      "title": "Konfigurierte Leistungseinheit wird nicht unterstützt",
+      "description": "Die Leistungseinheit `{unit}` wird nicht unterstützt. Verwende einen Sensor mit `W` oder `kW`."
+    },
+    "energy_state_class_invalid": {
+      "title": "state_class der Energiequelle ist ungültig",
+      "description": "Die state_class `{state_class}` ist ungültig. Verwende `total` oder `total_increasing`."
     }
   }
 }

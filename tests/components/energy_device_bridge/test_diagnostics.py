@@ -48,3 +48,5 @@ async def test_config_entry_diagnostics_redacts_sensitive_fields(hass: HomeAssis
     assert diagnostics["entry"]["data"][CONF_SOURCE_POWER_ENTITY_ID] == "**REDACTED**"
     assert diagnostics["entry"]["data"][CONF_SOURCE_ENERGY_ENTITY_ID] == "**REDACTED**"
     assert diagnostics["stored_state"]["last_source_entity_id"] == "**REDACTED**"
+    assert "runtime" in diagnostics
+    assert "ignored_negative_delta_count" in diagnostics["runtime"]

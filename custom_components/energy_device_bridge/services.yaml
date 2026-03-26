@@ -1,0 +1,31 @@
+adopt_current_source_as_baseline:
+  name: Adopt current source as baseline
+  description: Read the current valid source energy value and store it as the baseline without changing the virtual total.
+  target:
+    entity:
+      integration: energy_device_bridge
+      domain: sensor
+
+reset_tracker:
+  name: Reset tracker
+  description: Clear tracker metadata and baseline, then reset the virtual total to 0 kWh.
+  target:
+    entity:
+      integration: energy_device_bridge
+      domain: sensor
+
+set_virtual_total:
+  name: Set virtual total
+  description: Set the virtual cumulative total explicitly in kWh. The baseline is updated from current source when possible.
+  target:
+    entity:
+      integration: energy_device_bridge
+      domain: sensor
+  fields:
+    value_kwh:
+      name: Virtual total (kWh)
+      description: New virtual total value in kWh.
+      required: true
+      example: 123.45
+      selector:
+        number:
