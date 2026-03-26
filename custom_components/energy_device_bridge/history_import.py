@@ -187,8 +187,6 @@ async def async_schedule_copy_on_create(
         )
     ):
         return
-    if entry.state is not ConfigEntryState.LOADED:
-        return
     tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
     if tracker.history_import_has_run:
         return
