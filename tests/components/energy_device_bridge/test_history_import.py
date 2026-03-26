@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import UnitOfEnergy
@@ -229,3 +229,96 @@ async def test_first_import_replays_from_full_available_history(hass: HomeAssist
         assert history_mock.called
         assert import_stats_mock.called
         assert history_mock.call_args.args[1].year == 1970
+
+
+@pytest.mark.asyncio
+async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
+    """Import should not write statistics for the in-progress current hour."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-hour-boundary",
+            CONF_CONSUMER_NAME: "Import Hour Boundary",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.utcnow()
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    previous_hour = current_hour - timedelta(hours=1)
+    source_states = [
+        _MockHistoricalState(
+            state="1.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=previous_hour + timedelta(minutes=30),
+            last_changed=previous_hour + timedelta(minutes=30),
+        ),
+        _MockHistoricalState(
+            state="2.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=current_hour + timedelta(minutes=10),
+            last_changed=current_hour + timedelta(minutes=10),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ) as import_stats_mock,
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="button", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        assert import_stats_mock.called
+        rows = import_stats_mock.call_args.args[2]
+        assert len(rows) == 1
+        assert rows[0]["start"] == previous_hour
+
+
+@pytest.mark.asyncio
+async def test_copy_on_create_not_invoked_again_after_reload(hass: HomeAssistant) -> None:
+    """Create-time copy should run once and never re-run on restart/reload."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-once",
+            CONF_CONSUMER_NAME: "Import Once",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={},
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.energy_device_bridge.history_import.async_request_history_import",
+        new=AsyncMock(return_value=True),
+    ) as request_mock:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert request_mock.call_count >= 1
+
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert request_mock.call_count == 1

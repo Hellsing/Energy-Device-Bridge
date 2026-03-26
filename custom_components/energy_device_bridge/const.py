@@ -15,6 +15,7 @@ CONF_SOURCE_ENERGY_ENTITY_ID: Final = "source_energy_entity_id"
 CONF_ZERO_DROP_POLICY: Final = "zero_drop_policy"
 CONF_NOTIFY_ON_LOWER_NON_ZERO: Final = "notify_on_lower_non_zero"
 CONF_COPY_SOURCE_HISTORY_ON_CREATE: Final = "copy_source_history_on_create"
+CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED: Final = "copy_source_history_on_create_invoked"
 
 ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO: Final = "ignore_zero_until_non_zero"
 ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE: Final = "accept_zero_as_new_cycle"
@@ -53,6 +54,7 @@ ATTR_HISTORY_IMPORT_HOURS_IMPORTED: Final = "history_import_hours_imported"
 ATTR_HISTORY_IMPORT_PERIOD_START: Final = "history_import_period_start"
 ATTR_HISTORY_IMPORT_PERIOD_END: Final = "history_import_period_end"
 ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: Final = "history_import_last_imported_hour_start"
+ATTR_HISTORY_IMPORT_CREATE_INVOKED: Final = "history_import_create_invoked"
 
 ATTR_VALUE_KWH: Final = "value_kwh"
 

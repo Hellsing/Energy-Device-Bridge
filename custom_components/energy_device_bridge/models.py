@@ -16,6 +16,7 @@ from .const import (
     ATTR_LAST_ZERO_DROP_AT,
     ATTR_LOWER_VALUE_COUNT,
     ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_CREATE_INVOKED,
     ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
     ATTR_HISTORY_IMPORT_IN_PROGRESS,
     ATTR_HISTORY_IMPORT_LAST_ERROR,
@@ -75,6 +76,7 @@ class EnergyTrackerState:
     history_import_period_start: str | None = None
     history_import_period_end: str | None = None
     history_import_last_imported_hour_start: str | None = None
+    history_import_create_invoked: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize state for storage."""
@@ -105,6 +107,7 @@ class EnergyTrackerState:
             ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: (
                 self.history_import_last_imported_hour_start
             ),
+            ATTR_HISTORY_IMPORT_CREATE_INVOKED: self.history_import_create_invoked,
         }
 
     @classmethod
@@ -149,6 +152,9 @@ class EnergyTrackerState:
             history_import_period_end=data.get(ATTR_HISTORY_IMPORT_PERIOD_END),
             history_import_last_imported_hour_start=data.get(
                 ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START
+            ),
+            history_import_create_invoked=bool(
+                data.get(ATTR_HISTORY_IMPORT_CREATE_INVOKED, False)
             ),
         )
 

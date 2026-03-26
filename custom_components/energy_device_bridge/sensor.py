@@ -41,6 +41,7 @@ from .const import (
     ATTR_LAST_ZERO_DROP_AT,
     ATTR_LOWER_VALUE_COUNT,
     ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_CREATE_INVOKED,
     ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
     ATTR_HISTORY_IMPORT_IN_PROGRESS,
     ATTR_HISTORY_IMPORT_LAST_ERROR,
@@ -497,6 +498,13 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         self._schedule_save()
         self.async_write_ha_state()
 
+    async def async_apply_import_tracker_state(self, state: EnergyTrackerState) -> None:
+        """Replace runtime tracker state after history import."""
+        self._tracker = EnergyTrackerState.from_dict(state.as_dict())
+        self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
+        self._schedule_save()
+        self.async_write_ha_state()
+
     @property
     def runtime_diagnostics(self) -> dict[str, Any]:
         """Return redacted runtime diagnostics details."""
@@ -535,6 +543,7 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: (
                 self._tracker.history_import_last_imported_hour_start
             ),
+            ATTR_HISTORY_IMPORT_CREATE_INVOKED: self._tracker.history_import_create_invoked,
         }
 
 

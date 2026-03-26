@@ -11,6 +11,7 @@ from . import EnergyDeviceBridgeConfigEntry
 from .const import (
     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
     ATTR_HISTORY_IMPORT_HAS_RUN,
+    ATTR_HISTORY_IMPORT_CREATE_INVOKED,
     ATTR_HISTORY_IMPORT_HOURS_IMPORTED,
     ATTR_HISTORY_IMPORT_IN_PROGRESS,
     ATTR_HISTORY_IMPORT_LAST_ERROR,
@@ -117,6 +118,9 @@ async def async_get_config_entry_diagnostics(
                         stored_state.history_import_last_imported_hour_start
                         if stored_state
                         else None
+                    ),
+                    ATTR_HISTORY_IMPORT_CREATE_INVOKED: (
+                        stored_state.history_import_create_invoked if stored_state else False
                     ),
                 }
             ),

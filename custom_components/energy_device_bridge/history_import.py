@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+    CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED,
     CONF_ZERO_DROP_POLICY,
 )
 from .models import EnergyTrackerState
@@ -122,13 +123,20 @@ def _build_stats_rows(
     source_entity_id: str,
     zero_drop_policy: str,
     import_start_hour: datetime,
+    import_end_exclusive_hour: datetime,
 ) -> tuple[list[dict[str, Any]], int, datetime | None, datetime | None]:
     hours: dict[datetime, float] = {}
     sample_count = 0
     period_start: datetime | None = None
     period_end: datetime | None = None
 
-    for source_state in states:
+    sorted_states = sorted(
+        list(states),
+        key=lambda state: dt_util.as_utc(
+            state.last_updated or state.last_changed or dt_util.utcnow()
+        ),
+    )
+    for source_state in sorted_states:
         source_numeric = _parse_numeric(source_state.state)
         if source_numeric is None:
             continue
@@ -151,6 +159,8 @@ def _build_stats_rows(
 
         hour_start = sample_ts.replace(minute=0, second=0, microsecond=0)
         if hour_start < import_start_hour:
+            continue
+        if hour_start >= import_end_exclusive_hour:
             continue
         if period_start is None or hour_start < period_start:
             period_start = hour_start
@@ -179,9 +189,23 @@ async def async_schedule_copy_on_create(
         )
     ):
         return
+    if bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED, False)):
+        return
     tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
+    if tracker.history_import_create_invoked:
+        return
     if tracker.history_import_has_run:
         return
+    hass.config_entries.async_update_entry(
+        entry,
+        options={
+            **entry.options,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_INVOKED: True,
+        },
+    )
+    # Persist this immediately so restart/reload never re-triggers create-time import.
+    tracker.history_import_create_invoked = True
+    await entry.runtime_data.store.async_save(tracker)
     await async_request_history_import(
         hass,
         entry=entry,
@@ -248,6 +272,7 @@ async def _async_run_import(
 
     try:
         import_start_hour = _EPOCH_UTC
+        current_hour_start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
         replay_tracker = EnergyTrackerState()
         retention_limited = False
 
@@ -281,7 +306,7 @@ async def _async_run_import(
             _state_changes_during_period,
             hass,
             import_start_hour,
-            dt_util.utcnow(),
+            current_hour_start,
             source_entity_id,
         )
         source_states = history_data.get(source_entity_id, [])
@@ -292,6 +317,7 @@ async def _async_run_import(
             source_entity_id,
             zero_drop_policy,
             import_start_hour,
+            current_hour_start,
         )
         if stats_rows:
             metadata = {
@@ -312,6 +338,30 @@ async def _async_run_import(
             )
             retention_limited = first_ts > import_start_hour
 
+        if stats_rows:
+            tracker.virtual_total_kwh = replay_tracker.virtual_total_kwh
+            source_state = hass.states.get(source_entity_id)
+            source_kwh: float | None = None
+            if source_state is not None:
+                source_numeric = _parse_numeric(source_state.state)
+                if source_numeric is not None:
+                    source_kwh = _convert_energy_to_kwh(
+                        source_numeric,
+                        source_state.attributes.get("unit_of_measurement"),
+                    )
+            now_iso = dt_util.utcnow().isoformat()
+            tracker.last_source_entity_id = source_entity_id
+            tracker.awaiting_non_zero_after_zero_drop = False
+            if source_kwh is None:
+                # Force next valid live update to initialize baseline cleanly.
+                tracker.last_source_energy_value_kwh = None
+                tracker.last_valid_source_sample_ts = None
+                tracker.current_normalized_source_unit = None
+            else:
+                tracker.last_source_energy_value_kwh = source_kwh
+                tracker.last_valid_source_sample_ts = now_iso
+                tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+
         tracker.history_import_in_progress = False
         tracker.history_import_has_run = True
         tracker.history_import_last_result = "success"
@@ -328,6 +378,8 @@ async def _async_run_import(
             period_end.isoformat() if period_end else tracker.history_import_last_imported_hour_start
         )
         await entry.runtime_data.store.async_save(tracker)
+        if entry.runtime_data.energy_sensor is not None:
+            await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(tracker)
 
         summary = (
             f"Trigger: {trigger}\n"
