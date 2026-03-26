@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2026-03-26
+
+- Refactor recorder cleanup and remove reconfigure flow (81baee9)
+- Merge branch 'main' of https://github.com/Hellsing/Energy-Device-Bridge (36046be)
+- Update release-manual.yml (ca075e2)
+
 ## 1.0.1 - 2026-03-26
 
 - Add pending copy flag and clear recorder stats (5c92759)
