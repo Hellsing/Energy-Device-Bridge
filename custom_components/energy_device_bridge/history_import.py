@@ -208,8 +208,11 @@ async def async_request_history_import(
     entry.runtime_data.history_import_task = task
 
     def _clear_task(_task: object) -> None:
-        if entry.runtime_data.history_import_task is _task:
-            entry.runtime_data.history_import_task = None
+        runtime_data = getattr(entry, "runtime_data", None)
+        if runtime_data is None:
+            return
+        if runtime_data.history_import_task is _task:
+            runtime_data.history_import_task = None
 
     task.add_done_callback(_clear_task)
     return True

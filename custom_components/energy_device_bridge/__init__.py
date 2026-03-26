@@ -34,6 +34,8 @@ from .store import EnergyDeviceBridgeStore
 if TYPE_CHECKING:
     from .sensor import EnergyDeviceBridgeEnergySensor
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 
 @dataclass(slots=True)
 class EnergyDeviceBridgeRuntimeData:

@@ -284,11 +284,25 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def _resolve_reconfigure_entry(self) -> ConfigEntry:
+        """Return the entry being reconfigured across HA core versions."""
+        get_reconfigure_entry = getattr(self, "_get_reconfigure_entry", None)
+        if callable(get_reconfigure_entry):
+            return get_reconfigure_entry()
+
+        entry_id = self.context.get("entry_id")
+        if not isinstance(entry_id, str):
+            raise ValueError("Missing reconfigure entry_id in flow context")
+        entry = self.hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            raise ValueError(f"Config entry not found: {entry_id}")
+        return entry
+
     @staticmethod
     @callback
-    def async_get_options_flow(_config_entry: ConfigEntry) -> EnergyDeviceBridgeOptionsFlow:
+    def async_get_options_flow(config_entry: ConfigEntry) -> EnergyDeviceBridgeOptionsFlow:
         """Create the options flow to edit entry configuration from the gear menu."""
-        return EnergyDeviceBridgeOptionsFlow()
+        return EnergyDeviceBridgeOptionsFlow(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -347,7 +361,7 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Handle config entry reconfiguration."""
-        entry = self._get_reconfigure_entry()
+        entry = self._resolve_reconfigure_entry()
         entry_unique_id = entry.unique_id or entry.data.get(CONF_CONSUMER_UUID)
         defaults = resolve_consumer_config(entry.data)
         errors: dict[str, str] = {}
@@ -365,12 +379,25 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 if entry.unique_id is not None:
                     self._abort_if_unique_id_mismatch()
                 _LOGGER.debug("Reconfiguring Energy Device Bridge entry %s", entry.entry_id)
-                return self.async_update_reload_and_abort(
-                    entry,
-                    title=result.validated_data[CONF_CONSUMER_NAME],
-                    data_updates=result.validated_data,
-                    reason="reconfigure_successful",
-                )
+                try:
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        title=result.validated_data[CONF_CONSUMER_NAME],
+                        data_updates=result.validated_data,
+                        reason="reconfigure_successful",
+                    )
+                except TypeError:
+                    # Compatibility path for older Home Assistant cores.
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        title=result.validated_data[CONF_CONSUMER_NAME],
+                        data={
+                            **entry.data,
+                            **result.validated_data,
+                        },
+                    )
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    return self.async_abort(reason="reconfigure_successful")
             errors = result.errors
 
         return self.async_show_form(
