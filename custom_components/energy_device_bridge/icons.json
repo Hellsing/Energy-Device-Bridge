@@ -1,0 +1,8 @@
+{
+  "services": {
+    "adopt_current_source_as_baseline": "mdi:anchor",
+    "reset_tracker": "mdi:restore",
+    "set_virtual_total": "mdi:counter",
+    "import_source_history": "mdi:database-import"
+  }
+}

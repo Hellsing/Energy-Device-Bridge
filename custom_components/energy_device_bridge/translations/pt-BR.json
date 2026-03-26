@@ -7,7 +7,10 @@
         "data": {
           "consumer_name": "Nome do consumidor",
           "source_power_entity_id": "Sensor de potência de origem (opcional)",
-          "source_energy_entity_id": "Sensor de energia de origem"
+          "source_energy_entity_id": "Sensor de energia de origem",
+          "zero_drop_policy": "Tratamento de queda para zero na origem",
+          "notify_on_lower_non_zero": "Criar notificação persistente para valores de origem não nulos mais baixos",
+          "copy_source_history_on_create": "Copiar/importar o histórico de origem disponível para as estatísticas da bridge após criar esta bridge"
         }
       },
       "reconfigure": {
@@ -44,7 +47,10 @@
         "data": {
           "consumer_name": "Nome do consumidor",
           "source_power_entity_id": "Sensor de potência de origem (opcional)",
-          "source_energy_entity_id": "Sensor de energia de origem"
+          "source_energy_entity_id": "Sensor de energia de origem",
+          "zero_drop_policy": "Tratamento de queda para zero na origem",
+          "notify_on_lower_non_zero": "Criar notificação persistente para valores de origem não nulos mais baixos",
+          "copy_source_history_on_create": "Copiar/importar o histórico de origem disponível para as estatísticas da bridge após criar esta bridge"
         }
       }
     },
@@ -61,13 +67,106 @@
       "invalid_energy_state_class": "A fonte de energia deve usar state_class total ou total_increasing."
     }
   },
+  "selector": {
+    "zero_drop_policy": {
+      "options": {
+        "ignore_zero_until_non_zero": "Ignorar zero até a primeira leitura diferente de zero",
+        "accept_zero_as_new_cycle": "Aceitar zero imediatamente como nova linha de base do ciclo"
+      }
+    }
+  },
   "entity": {
+    "button": {
+      "adopt_current_source_as_baseline": {
+        "name": "Adotar valor de origem atual como linha de base"
+      },
+      "reset_tracker": {
+        "name": "Redefinir rastreador"
+      },
+      "import_source_history": {
+        "name": "Importar histórico de origem"
+      }
+    },
     "sensor": {
       "power": {
         "name": "Potência"
       },
       "energy": {
         "name": "Energia"
+      }
+    }
+  },
+  "issues": {
+    "source_entity_missing": {
+      "title": "Sensor de origem configurado ausente",
+      "description": "O sensor de origem configurado `{entity_id}` não existe mais. Atualize a configuração da integração para selecionar uma origem válida."
+    },
+    "energy_unit_unsupported": {
+      "title": "Unidade de energia configurada não é compatível",
+      "description": "A unidade de energia de origem `{unit}` não é compatível. Use um sensor de energia que reporte `Wh` ou `kWh`."
+    },
+    "power_unit_unsupported": {
+      "title": "Unidade de potência configurada não é compatível",
+      "description": "A unidade de potência de origem `{unit}` não é compatível. Use um sensor de potência que reporte `W` ou `kW`."
+    },
+    "energy_state_class_invalid": {
+      "title": "Classe de estado da fonte de energia inválida",
+      "description": "A state_class da fonte de energia `{state_class}` é inválida. Use `total` ou `total_increasing`."
+    }
+  },
+  "exceptions": {
+    "history_import_in_progress": {
+      "message": "Uma importação de histórico de origem já está em andamento para esta bridge."
+    },
+    "service_entry_not_found": {
+      "message": "A entrada do Energy Device Bridge `{entry_id}` não foi encontrada."
+    },
+    "service_entry_not_loaded": {
+      "message": "A entrada selecionada do Energy Device Bridge não está carregada."
+    },
+    "service_entity_not_found": {
+      "message": "A entidade `{entity_id}` não foi encontrada."
+    },
+    "service_entity_wrong_domain": {
+      "message": "A entidade `{entity_id}` não pertence ao Energy Device Bridge."
+    },
+    "service_energy_sensor_unavailable": {
+      "message": "O sensor de energia da bridge ainda não está disponível."
+    },
+    "service_requires_energy_entity": {
+      "message": "A entidade `{entity_id}` deve ser um sensor de energia do Energy Device Bridge."
+    },
+    "virtual_total_negative": {
+      "message": "O total virtual não pode ser negativo."
+    }
+  },
+  "services": {
+    "adopt_current_source_as_baseline": {
+      "name": "Adotar valor de origem atual como linha de base",
+      "description": "Lê o valor de energia de origem válido atual e o armazena como linha de base sem alterar o total virtual."
+    },
+    "reset_tracker": {
+      "name": "Redefinir rastreador",
+      "description": "Limpa os metadados e a linha de base do rastreador e, em seguida, redefine o total virtual para 0 kWh."
+    },
+    "set_virtual_total": {
+      "name": "Definir total virtual",
+      "description": "Define explicitamente o total cumulativo virtual em kWh.",
+      "fields": {
+        "value_kwh": {
+          "name": "Total virtual (kWh)",
+          "description": "Novo valor do total virtual em kWh."
+        }
+      }
+    },
+    "import_source_history": {
+      "name": "Importar histórico de origem",
+      "description": "Reprocessa o histórico de origem disponível pela lógica da bridge e importa estatísticas históricas da bridge para uma instância de bridge.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID da entrada de configuração",
+          "description": "ID da entrada de configuração de destino do Energy Device Bridge."
+        }
       }
     }
   }

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import EnergyDeviceBridgeConfigEntry
+from .const import DOMAIN
 from .history_import import async_request_history_import
 from .models import ConsumerConfig
 
@@ -42,7 +43,11 @@ class EnergyDeviceBridgeButtonBase(ButtonEntity):
         """Return active energy sensor or raise a user-facing error."""
         energy_sensor = self._entry.runtime_data.energy_sensor
         if energy_sensor is None:
-            raise HomeAssistantError("Bridge energy tracker is not available yet")
+            raise ServiceValidationError(
+                "Energy Device Bridge action error",
+                translation_domain=DOMAIN,
+                translation_key="service_energy_sensor_unavailable",
+            )
         return energy_sensor
 
 

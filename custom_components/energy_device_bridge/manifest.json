@@ -4,11 +4,10 @@
   "codeowners": ["@Hellsing"],
   "config_flow": true,
   "documentation": "https://github.com/Hellsing/energy-device-bridge#readme",
-  "homeassistant": "2024.4.0",
+  "homeassistant": "2025.1.0",
   "integration_type": "device",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Hellsing/energy-device-bridge/issues",
-  "loggers": ["custom_components.energy_device_bridge"],
   "requirements": [],
-  "version": "1.3.0"
+  "version": "1.0.0"
 }

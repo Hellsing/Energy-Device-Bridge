@@ -7,7 +7,10 @@
         "data": {
           "consumer_name": "Naam van de verbruiker",
           "source_power_entity_id": "Bronvermogenssensor (optioneel)",
-          "source_energy_entity_id": "Bronenergiesensor"
+          "source_energy_entity_id": "Bronenergiesensor",
+          "zero_drop_policy": "Afhandeling van nulval van de bron",
+          "notify_on_lower_non_zero": "Maak een permanente melding voor lagere niet-nul bronwaarden",
+          "copy_source_history_on_create": "Kopieer/importeer beschikbare brongeschiedenis in bridge-statistieken na het maken van deze bridge"
         }
       },
       "reconfigure": {
@@ -44,7 +47,10 @@
         "data": {
           "consumer_name": "Naam van de verbruiker",
           "source_power_entity_id": "Bronvermogenssensor (optioneel)",
-          "source_energy_entity_id": "Bronenergiesensor"
+          "source_energy_entity_id": "Bronenergiesensor",
+          "zero_drop_policy": "Afhandeling van nulval van de bron",
+          "notify_on_lower_non_zero": "Maak een permanente melding voor lagere niet-nul bronwaarden",
+          "copy_source_history_on_create": "Kopieer/importeer beschikbare brongeschiedenis in bridge-statistieken na het maken van deze bridge"
         }
       }
     },
@@ -61,13 +67,106 @@
       "invalid_energy_state_class": "De energiebron moet de state_class total of total_increasing gebruiken."
     }
   },
+  "selector": {
+    "zero_drop_policy": {
+      "options": {
+        "ignore_zero_until_non_zero": "Negeer nul tot de eerste niet-nulmeting",
+        "accept_zero_as_new_cycle": "Accepteer nul direct als nieuwe cyclusbasis"
+      }
+    }
+  },
   "entity": {
+    "button": {
+      "adopt_current_source_as_baseline": {
+        "name": "Huidige bronwaarde als basis overnemen"
+      },
+      "reset_tracker": {
+        "name": "Tracker resetten"
+      },
+      "import_source_history": {
+        "name": "Brongeschiedenis importeren"
+      }
+    },
     "sensor": {
       "power": {
         "name": "Vermogen"
       },
       "energy": {
         "name": "Energie"
+      }
+    }
+  },
+  "issues": {
+    "source_entity_missing": {
+      "title": "Geconfigureerde bronsensor ontbreekt",
+      "description": "De geconfigureerde bronsensor `{entity_id}` bestaat niet meer. Werk de integratieconfiguratie bij en selecteer een geldige bron."
+    },
+    "energy_unit_unsupported": {
+      "title": "Geconfigureerde energie-eenheid wordt niet ondersteund",
+      "description": "Energiebroneenheid `{unit}` wordt niet ondersteund. Gebruik een energiesensor die `Wh` of `kWh` rapporteert."
+    },
+    "power_unit_unsupported": {
+      "title": "Geconfigureerde vermogenseenheid wordt niet ondersteund",
+      "description": "Vermogensbroneenheid `{unit}` wordt niet ondersteund. Gebruik een vermogenssensor die `W` of `kW` rapporteert."
+    },
+    "energy_state_class_invalid": {
+      "title": "State class van energiebron is ongeldig",
+      "description": "De state_class van energiebron `{state_class}` is ongeldig. Gebruik `total` of `total_increasing`."
+    }
+  },
+  "exceptions": {
+    "history_import_in_progress": {
+      "message": "Er loopt al een import van brongeschiedenis voor deze bridge."
+    },
+    "service_entry_not_found": {
+      "message": "Energy Device Bridge-item `{entry_id}` is niet gevonden."
+    },
+    "service_entry_not_loaded": {
+      "message": "Het geselecteerde Energy Device Bridge-item is niet geladen."
+    },
+    "service_entity_not_found": {
+      "message": "Entiteit `{entity_id}` is niet gevonden."
+    },
+    "service_entity_wrong_domain": {
+      "message": "Entiteit `{entity_id}` hoort niet bij Energy Device Bridge."
+    },
+    "service_energy_sensor_unavailable": {
+      "message": "De bridge-energiesensor is nog niet beschikbaar."
+    },
+    "service_requires_energy_entity": {
+      "message": "Entiteit `{entity_id}` moet een Energy Device Bridge-energiesensor zijn."
+    },
+    "virtual_total_negative": {
+      "message": "Het virtuele totaal mag niet negatief zijn."
+    }
+  },
+  "services": {
+    "adopt_current_source_as_baseline": {
+      "name": "Huidige bronwaarde als basis overnemen",
+      "description": "Lees de huidige geldige bronenergiewaarde en sla die op als basis zonder het virtuele totaal te wijzigen."
+    },
+    "reset_tracker": {
+      "name": "Tracker resetten",
+      "description": "Wis trackermetadata en basis en zet daarna het virtuele totaal terug naar 0 kWh."
+    },
+    "set_virtual_total": {
+      "name": "Virtueel totaal instellen",
+      "description": "Stel het virtuele cumulatieve totaal expliciet in kWh in.",
+      "fields": {
+        "value_kwh": {
+          "name": "Virtueel totaal (kWh)",
+          "description": "Nieuwe waarde van het virtuele totaal in kWh."
+        }
+      }
+    },
+    "import_source_history": {
+      "name": "Brongeschiedenis importeren",
+      "description": "Speel beschikbare brongeschiedenis af via bridge-logica en importeer historische bridge-statistieken voor een bridge-instantie.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Configuratie-item-ID",
+          "description": "Doelconfiguratie-item-ID van Energy Device Bridge."
+        }
       }
     }
   }

@@ -2,25 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN, PLATFORMS, SERVICE_IMPORT_SOURCE_HISTORY
-from .history_import import (
-    async_request_history_import,
-    async_schedule_copy_on_create,
-    resolve_entry_for_service,
+from .const import (
+    ATTR_VALUE_KWH,
+    DOMAIN,
+    PLATFORMS,
+    SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+    SERVICE_IMPORT_SOURCE_HISTORY,
+    SERVICE_RESET_TRACKER,
+    SERVICE_SET_VIRTUAL_TOTAL,
 )
+from .history_import import async_request_history_import, async_schedule_copy_on_create
 from .models import ConsumerConfig, resolve_consumer_config
 from .store import EnergyDeviceBridgeStore
 
@@ -37,7 +44,8 @@ class EnergyDeviceBridgeRuntimeData:
     store: EnergyDeviceBridgeStore
     device_info: DeviceInfo
     energy_sensor: EnergyDeviceBridgeEnergySensor | None = None
-    active_issue_ids: set[str] | None = None
+    active_issue_ids: set[str] = field(default_factory=set)
+    history_import_task: asyncio.Task[None] | None = None
 
     def _issue_id(self, issue_key: str) -> str:
         return f"{self.consumer.consumer_uuid}_{issue_key}"
@@ -51,8 +59,6 @@ class EnergyDeviceBridgeRuntimeData:
         translation_placeholders: dict[str, str] | None = None,
     ) -> None:
         """Create or dismiss a runtime repair issue."""
-        if self.active_issue_ids is None:
-            self.active_issue_ids = set()
         issue_id = self._issue_id(issue_key)
 
         if is_active:
@@ -91,6 +97,65 @@ else:
     EnergyDeviceBridgeConfigEntry = ConfigEntry
 
 
+def _raise_service_validation_error(
+    translation_key: str,
+    placeholders: dict[str, str] | None = None,
+) -> None:
+    raise ServiceValidationError(
+        "Energy Device Bridge service validation error",
+        translation_domain=DOMAIN,
+        translation_key=translation_key,
+        translation_placeholders=placeholders,
+    )
+
+
+def _resolve_entry_by_id(
+    hass: HomeAssistant,
+    config_entry_id: str,
+) -> EnergyDeviceBridgeConfigEntry:
+    entry = hass.config_entries.async_get_entry(config_entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        _raise_service_validation_error(
+            "service_entry_not_found", {"entry_id": config_entry_id}
+        )
+    assert entry is not None
+    if entry.state is not ConfigEntryState.LOADED:
+        _raise_service_validation_error("service_entry_not_loaded")
+    return entry
+
+
+def _resolve_energy_sensors_from_entity_ids(
+    hass: HomeAssistant,
+    entity_ids: list[str],
+) -> list[EnergyDeviceBridgeEnergySensor]:
+    entity_registry = er.async_get(hass)
+    sensors_by_entry_id: dict[str, EnergyDeviceBridgeEnergySensor] = {}
+    for entity_id in entity_ids:
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            _raise_service_validation_error(
+                "service_entity_not_found", {"entity_id": entity_id}
+            )
+
+        entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            _raise_service_validation_error(
+                "service_entity_wrong_domain", {"entity_id": entity_id}
+            )
+        if entry.state is not ConfigEntryState.LOADED:
+            _raise_service_validation_error("service_entry_not_loaded")
+
+        runtime_data = entry.runtime_data
+        if runtime_data.energy_sensor is None or runtime_data.energy_sensor.entity_id is None:
+            _raise_service_validation_error("service_energy_sensor_unavailable")
+        if runtime_data.energy_sensor.entity_id != entity_id:
+            _raise_service_validation_error(
+                "service_requires_energy_entity", {"entity_id": entity_id}
+            )
+        sensors_by_entry_id[entry.entry_id] = runtime_data.energy_sensor
+    return list(sensors_by_entry_id.values())
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> bool:
     """Set up Energy Device Bridge from a config entry."""
     consumer = resolve_consumer_config(entry.data)
@@ -102,7 +167,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfig
         model="Persistent Energy Bridge",
         name=consumer.consumer_name,
     )
-    # Ensure the bridge device exists as soon as the entry is set up.
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, consumer.consumer_uuid)},
@@ -115,7 +179,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfig
         entry_id=entry.entry_id,
         store=EnergyDeviceBridgeStore(hass, entry.entry_id),
         device_info=device_info,
-        active_issue_ids=set(),
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     hass.async_create_task(async_schedule_copy_on_create(hass, entry))
@@ -124,16 +187,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfig
 
 async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     """Set up integration-level services."""
-    hass.data.setdefault(DOMAIN, {})
-    if hass.data[DOMAIN].get("services_registered"):
-        return True
 
-    async def _handle_import_service(call) -> None:
-        entry = resolve_entry_for_service(
-            hass,
-            config_entry_id=call.data.get("config_entry_id"),
-            entity_id=call.data.get("entity_id"),
-        )
+    async def _handle_adopt_baseline_service(call: ServiceCall) -> None:
+        entity_ids = list(call.data[ATTR_ENTITY_ID])
+        for sensor in _resolve_energy_sensors_from_entity_ids(hass, entity_ids):
+            await sensor.async_adopt_current_source_as_baseline()
+
+    async def _handle_reset_tracker_service(call: ServiceCall) -> None:
+        entity_ids = list(call.data[ATTR_ENTITY_ID])
+        for sensor in _resolve_energy_sensors_from_entity_ids(hass, entity_ids):
+            await sensor.async_reset_tracker()
+
+    async def _handle_set_virtual_total_service(call: ServiceCall) -> None:
+        entity_ids = list(call.data[ATTR_ENTITY_ID])
+        value_kwh = float(call.data[ATTR_VALUE_KWH])
+        if value_kwh < 0:
+            raise ServiceValidationError(
+                "Energy Device Bridge service validation error",
+                translation_domain=DOMAIN,
+                translation_key="virtual_total_negative",
+            )
+        for sensor in _resolve_energy_sensors_from_entity_ids(hass, entity_ids):
+            await sensor.async_set_virtual_total(value_kwh)
+
+    async def _handle_import_service(call: ServiceCall) -> None:
+        entry = _resolve_entry_by_id(hass, call.data["config_entry_id"])
         accepted = await async_request_history_import(
             hass,
             entry=entry,
@@ -141,30 +219,50 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             reject_if_running=True,
         )
         if not accepted:
-            raise ServiceValidationError(
-                "History import request was not accepted",
-                translation_domain=DOMAIN,
-                translation_key="history_import_in_progress",
-            )
+            _raise_service_validation_error("history_import_in_progress")
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_IMPORT_SOURCE_HISTORY,
-        _handle_import_service,
-        schema=vol.Schema(
-            {
-                vol.Optional("config_entry_id"): cv.string,
-                vol.Optional("entity_id"): cv.entity_id,
-            }
-        ),
-    )
-    hass.data[DOMAIN]["services_registered"] = True
+    if not hass.services.has_service(DOMAIN, SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
+            _handle_adopt_baseline_service,
+            schema=vol.Schema({vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids}),
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_TRACKER):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RESET_TRACKER,
+            _handle_reset_tracker_service,
+            schema=vol.Schema({vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids}),
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_VIRTUAL_TOTAL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_VIRTUAL_TOTAL,
+            _handle_set_virtual_total_service,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids,
+                    vol.Required(ATTR_VALUE_KWH): vol.Coerce(float),
+                }
+            ),
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_SOURCE_HISTORY):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_IMPORT_SOURCE_HISTORY,
+            _handle_import_service,
+            schema=vol.Schema({vol.Required("config_entry_id"): cv.string}),
+        )
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> bool:
     """Unload a config entry."""
     runtime_data = entry.runtime_data
+    if runtime_data.history_import_task is not None and not runtime_data.history_import_task.done():
+        runtime_data.history_import_task.cancel()
+        runtime_data.history_import_task = None
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         runtime_data.dismiss_all_issues(hass)

@@ -8,10 +8,9 @@ from typing import Any
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, State
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
@@ -21,13 +20,11 @@ from .const import (
     DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
     DEFAULT_ZERO_DROP_POLICY,
     DOMAIN,
-    SERVICE_IMPORT_SOURCE_HISTORY,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
     CONF_ZERO_DROP_POLICY,
 )
 from .models import EnergyTrackerState
 
-_IMPORT_TASKS_KEY = "history_import_tasks"
 _EPOCH_UTC = datetime(1970, 1, 1, tzinfo=dt_util.UTC)
 
 
@@ -91,11 +88,6 @@ def _convert_energy_to_kwh(value: float, unit: str | None) -> float | None:
         return float(EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR))
     except (TypeError, ValueError):
         return None
-
-
-def _entry_tasks(hass: HomeAssistant) -> dict[str, Any]:
-    hass.data.setdefault(DOMAIN, {})
-    return hass.data[DOMAIN].setdefault(_IMPORT_TASKS_KEY, {})
 
 
 def _bridge_energy_entity_id(
@@ -206,15 +198,20 @@ async def async_request_history_import(
     reject_if_running: bool = True,
 ) -> bool:
     """Queue history import task for one entry."""
-    tasks = _entry_tasks(hass)
-    running_task = tasks.get(entry.entry_id)
-    if running_task and not running_task.done():
+    running_task = entry.runtime_data.history_import_task
+    if running_task is not None and not running_task.done():
         if reject_if_running:
             _manual_validation_error("history_import_in_progress")
         return False
 
     task = hass.async_create_task(_async_run_import(hass, entry, trigger))
-    tasks[entry.entry_id] = task
+    entry.runtime_data.history_import_task = task
+
+    def _clear_task(_task: object) -> None:
+        if entry.runtime_data.history_import_task is _task:
+            entry.runtime_data.history_import_task = None
+
+    task.add_done_callback(_clear_task)
     return True
 
 
@@ -354,40 +351,3 @@ async def _async_run_import(
         )
 
 
-def resolve_entry_for_service(
-    hass: HomeAssistant,
-    *,
-    config_entry_id: str | None,
-    entity_id: str | None,
-) -> ConfigEntry:
-    """Resolve target config entry for import service."""
-    if config_entry_id:
-        entry = hass.config_entries.async_get_entry(config_entry_id)
-        if entry is None or entry.domain != DOMAIN:
-            _manual_validation_error(
-                "history_import_entry_not_found",
-                {"entry_id": config_entry_id},
-            )
-        if entry.state is not ConfigEntryState.LOADED:
-            _manual_validation_error("history_import_entry_not_loaded")
-        return entry
-
-    if entity_id:
-        entity_entry = er.async_get(hass).async_get(entity_id)
-        if entity_entry is None:
-            _manual_validation_error(
-                "history_import_entity_not_found",
-                {"entity_id": entity_id},
-            )
-        assert entity_entry is not None
-        entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
-        if entry is None or entry.domain != DOMAIN:
-            _manual_validation_error(
-                "history_import_entity_wrong_domain",
-                {"entity_id": entity_id},
-            )
-        if entry.state is not ConfigEntryState.LOADED:
-            _manual_validation_error("history_import_entry_not_loaded")
-        return entry
-
-    _manual_validation_error("history_import_target_required")

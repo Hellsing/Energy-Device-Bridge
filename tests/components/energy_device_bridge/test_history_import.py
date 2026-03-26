@@ -113,7 +113,7 @@ async def test_button_and_service_share_import_entrypoint(hass: HomeAssistant) -
         await hass.services.async_call(
             DOMAIN,
             SERVICE_IMPORT_SOURCE_HISTORY,
-            {"entity_id": energy_entity_id},
+            {"config_entry_id": entry.entry_id},
             blocking=True,
         )
         assert button_request_mock.call_count == 1

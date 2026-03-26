@@ -10,7 +10,7 @@
           "source_energy_entity_id": "Quell-Energiesensor",
           "zero_drop_policy": "Verhalten bei Quellwert 0",
           "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen",
-          "copy_source_history_on_create": "Verfuegbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
+          "copy_source_history_on_create": "Verfügbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
         }
       },
       "reconfigure": {
@@ -50,7 +50,7 @@
           "source_energy_entity_id": "Quell-Energiesensor",
           "zero_drop_policy": "Verhalten bei Quellwert 0",
           "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen",
-          "copy_source_history_on_create": "Verfuegbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
+          "copy_source_history_on_create": "Verfügbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
         }
       }
     },
@@ -115,23 +115,59 @@
     }
   },
   "exceptions": {
-    "history_import_target_required": {
-      "message": "Bitte entweder config_entry_id oder bridge entity_id angeben."
+    "history_import_in_progress": {
+      "message": "Ein Quellhistorie-Import läuft für diese Bridge bereits."
     },
-    "history_import_entry_not_found": {
+    "service_entry_not_found": {
       "message": "Energy Device Bridge Eintrag `{entry_id}` wurde nicht gefunden."
     },
-    "history_import_entry_not_loaded": {
-      "message": "Der ausgewaehlte Energy Device Bridge Eintrag ist nicht geladen."
+    "service_entry_not_loaded": {
+      "message": "Der ausgewählte Energy Device Bridge Eintrag ist nicht geladen."
     },
-    "history_import_entity_not_found": {
-      "message": "Entitaet `{entity_id}` wurde nicht gefunden."
+    "service_entity_not_found": {
+      "message": "Entität `{entity_id}` wurde nicht gefunden."
     },
-    "history_import_entity_wrong_domain": {
-      "message": "Entitaet `{entity_id}` gehoert nicht zu Energy Device Bridge."
+    "service_entity_wrong_domain": {
+      "message": "Entität `{entity_id}` gehört nicht zu Energy Device Bridge."
     },
-    "history_import_in_progress": {
-      "message": "Ein Quellhistorie-Import laeuft fuer diese Bridge bereits."
+    "service_energy_sensor_unavailable": {
+      "message": "Der Bridge-Energiesensor ist noch nicht verfügbar."
+    },
+    "service_requires_energy_entity": {
+      "message": "Entität `{entity_id}` muss ein Energy Device Bridge Energiesensor sein."
+    },
+    "virtual_total_negative": {
+      "message": "Der virtuelle Gesamtwert darf nicht negativ sein."
+    }
+  },
+  "services": {
+    "adopt_current_source_as_baseline": {
+      "name": "Aktuellen Quellwert als Basis übernehmen",
+      "description": "Liest den aktuellen gültigen Quell-Energiewert und speichert ihn als Basis, ohne den virtuellen Gesamtwert zu ändern."
+    },
+    "reset_tracker": {
+      "name": "Tracker zurücksetzen",
+      "description": "Setzt Tracker-Metadaten und Basis zurück und setzt den virtuellen Gesamtwert auf 0 kWh."
+    },
+    "set_virtual_total": {
+      "name": "Virtuellen Gesamtwert setzen",
+      "description": "Setzt den virtuellen kumulativen Gesamtwert explizit in kWh.",
+      "fields": {
+        "value_kwh": {
+          "name": "Virtueller Gesamtwert (kWh)",
+          "description": "Neuer virtueller Gesamtwert in kWh."
+        }
+      }
+    },
+    "import_source_history": {
+      "name": "Quellhistorie importieren",
+      "description": "Spielt verfügbare Quellhistorie durch die Bridge-Logik nach und importiert historische Bridge-Statistiken für eine Bridge-Instanz.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config-Entry-ID",
+          "description": "Ziel-Config-Entry-ID der Energy Device Bridge."
+        }
+      }
     }
   }
 }

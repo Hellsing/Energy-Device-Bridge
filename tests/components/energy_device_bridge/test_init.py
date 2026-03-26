@@ -19,7 +19,10 @@ from custom_components.energy_device_bridge.const import (
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     DOMAIN,
+    SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
     SERVICE_IMPORT_SOURCE_HISTORY,
+    SERVICE_RESET_TRACKER,
+    SERVICE_SET_VIRTUAL_TOTAL,
 )
 
 
@@ -38,9 +41,12 @@ def test_manifest_basics() -> None:
 
 @pytest.mark.asyncio
 async def test_import_service_registered(hass) -> None:
-    """Integration-level import service is registered on setup."""
+    """Integration-level services are registered on setup."""
     assert await async_setup_component(hass, DOMAIN, {})
     await hass.async_block_till_done()
+    assert hass.services.has_service(DOMAIN, SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE)
+    assert hass.services.has_service(DOMAIN, SERVICE_RESET_TRACKER)
+    assert hass.services.has_service(DOMAIN, SERVICE_SET_VIRTUAL_TOTAL)
     assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_SOURCE_HISTORY)
 
 

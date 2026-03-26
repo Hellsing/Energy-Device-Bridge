@@ -115,23 +115,59 @@
     }
   },
   "exceptions": {
-    "history_import_target_required": {
-      "message": "Provide either a config entry ID or a bridge entity_id."
-    },
-    "history_import_entry_not_found": {
-      "message": "Energy Device Bridge entry `{entry_id}` was not found."
-    },
-    "history_import_entry_not_loaded": {
-      "message": "The selected Energy Device Bridge entry is not loaded."
-    },
-    "history_import_entity_not_found": {
-      "message": "Entity `{entity_id}` was not found."
-    },
-    "history_import_entity_wrong_domain": {
-      "message": "Entity `{entity_id}` does not belong to Energy Device Bridge."
-    },
     "history_import_in_progress": {
       "message": "A source history import is already running for this bridge."
+    },
+    "service_entry_not_found": {
+      "message": "Energy Device Bridge entry `{entry_id}` was not found."
+    },
+    "service_entry_not_loaded": {
+      "message": "The selected Energy Device Bridge entry is not loaded."
+    },
+    "service_entity_not_found": {
+      "message": "Entity `{entity_id}` was not found."
+    },
+    "service_entity_wrong_domain": {
+      "message": "Entity `{entity_id}` does not belong to Energy Device Bridge."
+    },
+    "service_energy_sensor_unavailable": {
+      "message": "The bridge energy sensor is not available yet."
+    },
+    "service_requires_energy_entity": {
+      "message": "Entity `{entity_id}` must be an Energy Device Bridge energy sensor."
+    },
+    "virtual_total_negative": {
+      "message": "Virtual total cannot be negative."
+    }
+  },
+  "services": {
+    "adopt_current_source_as_baseline": {
+      "name": "Adopt current source as baseline",
+      "description": "Read the current valid source energy value and store it as the baseline without changing the virtual total."
+    },
+    "reset_tracker": {
+      "name": "Reset tracker",
+      "description": "Clear tracker metadata and baseline, then reset the virtual total to 0 kWh."
+    },
+    "set_virtual_total": {
+      "name": "Set virtual total",
+      "description": "Set the virtual cumulative total explicitly in kWh.",
+      "fields": {
+        "value_kwh": {
+          "name": "Virtual total (kWh)",
+          "description": "New virtual total value in kWh."
+        }
+      }
+    },
+    "import_source_history": {
+      "name": "Import source history",
+      "description": "Replay available source history through bridge logic and import historical bridge statistics for one bridge instance.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Target Energy Device Bridge config entry ID."
+        }
+      }
     }
   }
 }

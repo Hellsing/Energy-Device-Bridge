@@ -11,7 +11,11 @@ import voluptuous as vol
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.sensor import SensorStateClass
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    OptionsFlowWithConfigEntry,
+)
 from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -282,26 +286,9 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> EnergyDeviceBridgeOptionsFlow:
+    def async_get_options_flow(_config_entry: ConfigEntry) -> EnergyDeviceBridgeOptionsFlow:
         """Create the options flow to edit entry configuration from the gear menu."""
-        return EnergyDeviceBridgeOptionsFlow(config_entry)
-
-    def _resolve_reconfigure_entry(self) -> ConfigEntry:
-        """Resolve reconfigure entry across Home Assistant versions."""
-        getter = getattr(self, "_get_reconfigure_entry", None)
-        if getter is not None:
-            return getter()
-
-        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if entry is None:
-            raise ValueError("Reconfigure target entry was not found")
-        return entry
-
-    def _abort_if_unique_id_mismatch_if_supported(self) -> None:
-        """Abort if unique_id mismatches when helper exists."""
-        helper = getattr(self, "_abort_if_unique_id_mismatch", None)
-        if helper is not None:
-            helper()
+        return EnergyDeviceBridgeOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -337,32 +324,17 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CONSUMER_UUID: consumer_uuid,
                     **result.validated_data,
                 }
-                try:
-                    return self.async_create_entry(
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data=data,
-                        options={
-                            CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
-                            CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
-                            CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
-                                selected_copy_source_history_on_create
-                            ),
-                        },
-                    )
-                except TypeError:
-                    # Compatibility fallback for HA versions lacking create_entry options arg.
-                    entry_result = self.async_create_entry(
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data=data,
-                    )
-                    entry_result["options"] = {
+                return self.async_create_entry(
+                    title=result.validated_data[CONF_CONSUMER_NAME],
+                    data=data,
+                    options={
                         CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
                         CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
                         CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
                             selected_copy_source_history_on_create
                         ),
-                    }
-                    return entry_result
+                    },
+                )
             errors = result.errors
 
         return self.async_show_form(
@@ -375,7 +347,7 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Handle config entry reconfiguration."""
-        entry = self._resolve_reconfigure_entry()
+        entry = self._get_reconfigure_entry()
         entry_unique_id = entry.unique_id or entry.data.get(CONF_CONSUMER_UUID)
         defaults = resolve_consumer_config(entry.data)
         errors: dict[str, str] = {}
@@ -391,25 +363,14 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 if entry_unique_id is not None:
                     await self.async_set_unique_id(entry_unique_id)
                 if entry.unique_id is not None:
-                    self._abort_if_unique_id_mismatch_if_supported()
+                    self._abort_if_unique_id_mismatch()
                 _LOGGER.debug("Reconfiguring Energy Device Bridge entry %s", entry.entry_id)
-                try:
-                    return self.async_update_reload_and_abort(
-                        entry,
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data_updates=result.validated_data,
-                        reason="reconfigure_successful",
-                    )
-                except TypeError:
-                    return self.async_update_reload_and_abort(
-                        entry,
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data={
-                            CONF_CONSUMER_UUID: entry.data[CONF_CONSUMER_UUID],
-                            **result.validated_data,
-                        },
-                        reason="reconfigure_successful",
-                    )
+                return self.async_update_reload_and_abort(
+                    entry,
+                    title=result.validated_data[CONF_CONSUMER_NAME],
+                    data_updates=result.validated_data,
+                    reason="reconfigure_successful",
+                )
             errors = result.errors
 
         return self.async_show_form(
@@ -425,32 +386,14 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class EnergyDeviceBridgeOptionsFlow(OptionsFlow):
+class EnergyDeviceBridgeOptionsFlow(OptionsFlowWithConfigEntry):
     """Options flow used by the config entry gear menu."""
-
-    def __init__(self, config_entry: ConfigEntry | None = None) -> None:
-        """Initialize options flow with compatibility for older HA versions."""
-        self._legacy_config_entry = config_entry
-
-    def _resolve_options_entry(self) -> ConfigEntry:
-        """Resolve config entry across Home Assistant versions."""
-        entry = getattr(self, "config_entry", None)
-        if entry is not None:
-            return entry
-        if self._legacy_config_entry is not None:
-            return self._legacy_config_entry
-        entry_id = getattr(self, "_config_entry_id", None)
-        if entry_id is not None:
-            resolved = self.hass.config_entries.async_get_entry(entry_id)
-            if resolved is not None:
-                return resolved
-        raise ValueError("Options flow config entry was not found")
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Update the config entry through the options flow."""
-        config_entry = self._resolve_options_entry()
+        config_entry = self.config_entry
         defaults = resolve_consumer_config(config_entry.data)
         option_defaults = {
             CONF_ZERO_DROP_POLICY: config_entry.options.get(

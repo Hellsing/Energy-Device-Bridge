@@ -6,8 +6,6 @@ from collections.abc import Callable
 import logging
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -23,9 +21,8 @@ from homeassistant.const import (
     UnitOfPower,
 )
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
@@ -56,7 +53,6 @@ from .const import (
     ATTR_HISTORY_IMPORT_RETENTION_LIMITED,
     ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED,
     ATTR_RESET_DETECTED_COUNT,
-    ATTR_VALUE_KWH,
     ATTR_ZERO_DROP_COUNT,
     CONF_NOTIFY_ON_LOWER_NON_ZERO,
     CONF_COPY_SOURCE_HISTORY_ON_CREATE,
@@ -68,11 +64,6 @@ from .const import (
     ISSUE_ENERGY_UNIT_UNSUPPORTED,
     ISSUE_POWER_UNIT_UNSUPPORTED,
     ISSUE_SOURCE_ENTITY_MISSING,
-    SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
-    SERVICE_RESET_TRACKER,
-    SERVICE_SET_VIRTUAL_TOTAL,
-    ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
-    ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 from .models import ConsumerConfig, EnergyTrackerState
 
@@ -148,16 +139,31 @@ class EnergyDeviceBridgeSensorBase(SensorEntity):
 
     async def async_adopt_current_source_as_baseline(self) -> None:
         """Default service handler for unsupported entity types."""
-        raise HomeAssistantError("Action is only supported by the bridge energy sensor")
+        raise ServiceValidationError(
+            "Energy Device Bridge action error",
+            translation_domain=DOMAIN,
+            translation_key="service_requires_energy_entity",
+            translation_placeholders={"entity_id": self.entity_id or "unknown"},
+        )
 
     async def async_reset_tracker(self) -> None:
         """Default service handler for unsupported entity types."""
-        raise HomeAssistantError("Action is only supported by the bridge energy sensor")
+        raise ServiceValidationError(
+            "Energy Device Bridge action error",
+            translation_domain=DOMAIN,
+            translation_key="service_requires_energy_entity",
+            translation_placeholders={"entity_id": self.entity_id or "unknown"},
+        )
 
     async def async_set_virtual_total(self, value_kwh: float) -> None:
         """Default service handler for unsupported entity types."""
         _ = value_kwh
-        raise HomeAssistantError("Action is only supported by the bridge energy sensor")
+        raise ServiceValidationError(
+            "Energy Device Bridge action error",
+            translation_domain=DOMAIN,
+            translation_key="service_requires_energy_entity",
+            translation_placeholders={"entity_id": self.entity_id or "unknown"},
+        )
 
 
 class EnergyDeviceBridgePowerSensor(EnergyDeviceBridgeSensorBase):
@@ -469,7 +475,11 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
     async def async_set_virtual_total(self, value_kwh: float) -> None:
         """Set virtual total and reset/adopt baseline metadata."""
         if value_kwh < 0:
-            raise HomeAssistantError("Virtual total cannot be negative")
+            raise ServiceValidationError(
+                "Energy Device Bridge action error",
+                translation_domain=DOMAIN,
+                translation_key="virtual_total_negative",
+            )
         self._tracker.virtual_total_kwh = float(value_kwh)
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
         try:
@@ -534,26 +544,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Energy Device Bridge sensors from config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    if not hass.data[DOMAIN].get("entity_services_registered"):
-        platform = entity_platform.async_get_current_platform()
-        platform.async_register_entity_service(
-            SERVICE_ADOPT_CURRENT_SOURCE_AS_BASELINE,
-            {},
-            "async_adopt_current_source_as_baseline",
-        )
-        platform.async_register_entity_service(
-            SERVICE_RESET_TRACKER,
-            {},
-            "async_reset_tracker",
-        )
-        platform.async_register_entity_service(
-            SERVICE_SET_VIRTUAL_TOTAL,
-            {vol.Required(ATTR_VALUE_KWH): vol.Coerce(float)},
-            "async_set_virtual_total",
-        )
-        hass.data[DOMAIN]["entity_services_registered"] = True
-
     entities: list[SensorEntity] = [EnergyDeviceBridgeEnergySensor(entry)]
     if entry.runtime_data.consumer.source_power_entity_id:
         entities.insert(0, EnergyDeviceBridgePowerSensor(entry))

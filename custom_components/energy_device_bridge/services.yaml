@@ -32,19 +32,11 @@ set_virtual_total:
 
 import_source_history:
   name: Import source history
-  description: Replay available source history through bridge logic and import historical bridge statistics.
+  description: Replay available source history through bridge logic and import historical bridge statistics for one bridge instance.
   fields:
     config_entry_id:
       name: Config entry ID
-      description: Target bridge config entry ID.
-      required: false
+      description: Target Energy Device Bridge config entry ID.
+      required: true
       selector:
         text:
-    entity_id:
-      name: Bridge entity
-      description: Bridge energy sensor entity ID for resolving target config entry.
-      required: false
-      selector:
-        entity:
-          integration: energy_device_bridge
-          domain: sensor

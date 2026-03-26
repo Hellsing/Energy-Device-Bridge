@@ -7,7 +7,10 @@
         "data": {
           "consumer_name": "Название потребителя",
           "source_power_entity_id": "Исходный датчик мощности (необязательно)",
-          "source_energy_entity_id": "Исходный датчик энергии"
+          "source_energy_entity_id": "Исходный датчик энергии",
+          "zero_drop_policy": "Обработка падения источника до нуля",
+          "notify_on_lower_non_zero": "Создавать постоянное уведомление для меньших ненулевых значений источника",
+          "copy_source_history_on_create": "Копировать/импортировать доступную историю источника в статистику bridge после создания этого bridge"
         }
       },
       "reconfigure": {
@@ -44,7 +47,10 @@
         "data": {
           "consumer_name": "Название потребителя",
           "source_power_entity_id": "Исходный датчик мощности (необязательно)",
-          "source_energy_entity_id": "Исходный датчик энергии"
+          "source_energy_entity_id": "Исходный датчик энергии",
+          "zero_drop_policy": "Обработка падения источника до нуля",
+          "notify_on_lower_non_zero": "Создавать постоянное уведомление для меньших ненулевых значений источника",
+          "copy_source_history_on_create": "Копировать/импортировать доступную историю источника в статистику bridge после создания этого bridge"
         }
       }
     },
@@ -61,13 +67,106 @@
       "invalid_energy_state_class": "Источник энергии должен использовать state_class total или total_increasing."
     }
   },
+  "selector": {
+    "zero_drop_policy": {
+      "options": {
+        "ignore_zero_until_non_zero": "Игнорировать ноль до первого ненулевого значения",
+        "accept_zero_as_new_cycle": "Сразу принимать ноль как новую базу цикла"
+      }
+    }
+  },
   "entity": {
+    "button": {
+      "adopt_current_source_as_baseline": {
+        "name": "Принять текущее значение источника как базу"
+      },
+      "reset_tracker": {
+        "name": "Сбросить трекер"
+      },
+      "import_source_history": {
+        "name": "Импортировать историю источника"
+      }
+    },
     "sensor": {
       "power": {
         "name": "Мощность"
       },
       "energy": {
         "name": "Энергия"
+      }
+    }
+  },
+  "issues": {
+    "source_entity_missing": {
+      "title": "Настроенный исходный датчик отсутствует",
+      "description": "Настроенный исходный датчик `{entity_id}` больше не существует. Обновите конфигурацию интеграции и выберите корректный источник."
+    },
+    "energy_unit_unsupported": {
+      "title": "Настроенная единица энергии не поддерживается",
+      "description": "Единица энергии источника `{unit}` не поддерживается. Используйте датчик энергии, который сообщает `Wh` или `kWh`."
+    },
+    "power_unit_unsupported": {
+      "title": "Настроенная единица мощности не поддерживается",
+      "description": "Единица мощности источника `{unit}` не поддерживается. Используйте датчик мощности, который сообщает `W` или `kW`."
+    },
+    "energy_state_class_invalid": {
+      "title": "Некорректный класс состояния источника энергии",
+      "description": "State_class источника энергии `{state_class}` некорректен. Используйте `total` или `total_increasing`."
+    }
+  },
+  "exceptions": {
+    "history_import_in_progress": {
+      "message": "Импорт истории источника уже выполняется для этого bridge."
+    },
+    "service_entry_not_found": {
+      "message": "Запись Energy Device Bridge `{entry_id}` не найдена."
+    },
+    "service_entry_not_loaded": {
+      "message": "Выбранная запись Energy Device Bridge не загружена."
+    },
+    "service_entity_not_found": {
+      "message": "Сущность `{entity_id}` не найдена."
+    },
+    "service_entity_wrong_domain": {
+      "message": "Сущность `{entity_id}` не относится к Energy Device Bridge."
+    },
+    "service_energy_sensor_unavailable": {
+      "message": "Энергетический датчик bridge пока недоступен."
+    },
+    "service_requires_energy_entity": {
+      "message": "Сущность `{entity_id}` должна быть энергетическим датчиком Energy Device Bridge."
+    },
+    "virtual_total_negative": {
+      "message": "Виртуальный итог не может быть отрицательным."
+    }
+  },
+  "services": {
+    "adopt_current_source_as_baseline": {
+      "name": "Принять текущее значение источника как базу",
+      "description": "Считывает текущее корректное значение энергии источника и сохраняет его как базовое, не изменяя виртуальный итог."
+    },
+    "reset_tracker": {
+      "name": "Сбросить трекер",
+      "description": "Очищает метаданные и базу трекера, затем сбрасывает виртуальный итог до 0 кВт⋅ч."
+    },
+    "set_virtual_total": {
+      "name": "Установить виртуальный итог",
+      "description": "Явно задает виртуальный накопительный итог в кВт⋅ч.",
+      "fields": {
+        "value_kwh": {
+          "name": "Виртуальный итог (кВт⋅ч)",
+          "description": "Новое значение виртуального итога в кВт⋅ч."
+        }
+      }
+    },
+    "import_source_history": {
+      "name": "Импортировать историю источника",
+      "description": "Прогоняет доступную историю источника через логику bridge и импортирует историческую статистику bridge для одного экземпляра bridge.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID записи конфигурации",
+          "description": "Целевой ID записи конфигурации Energy Device Bridge."
+        }
       }
     }
   }

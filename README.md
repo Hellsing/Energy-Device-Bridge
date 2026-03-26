@@ -3,7 +3,7 @@
 [![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Hellsing/energy-device-bridge/validate.yml?label=Tests&style=for-the-badge)](https://github.com/Hellsing/energy-device-bridge/actions/workflows/validate.yml)
 
-Energy Device Bridge is a Home Assistant helper integration that keeps an Energy Dashboard total continuous when the underlying source meter resets, rolls over, or gets replaced.
+Energy Device Bridge is a Home Assistant device integration that keeps an Energy Dashboard total continuous when the underlying source meter resets, rolls over, or gets replaced.
 
 Each config entry creates one virtual device with:
 - an optional virtual power sensor (live passthrough when a source power sensor is configured)
@@ -63,7 +63,7 @@ Accumulation logic:
 
 Lower-source drop behavior is configurable in the integration options:
 - **Zero-drop policy** (`zero_drop_policy`)
-  - `accept_zero_as_new_cycle` (default, backward-compatible): when source drops to `0`, baseline is immediately set to `0` and future positive deltas accumulate from `0`.
+  - `accept_zero_as_new_cycle` (default): when source drops to `0`, baseline is immediately set to `0` and future positive deltas accumulate from `0`.
   - `ignore_zero_until_non_zero`: when source drops to `0`, baseline is not changed; the first later non-zero reading becomes the new baseline without adding a transition delta.
 - **Notify on lower non-zero** (`notify_on_lower_non_zero`)
   - If enabled, lower non-zero drops create/update one deterministic persistent notification per config entry.
@@ -75,8 +75,9 @@ Maintenance actions:
 - **Set virtual total**: sets the virtual total explicitly (kWh), then refreshes baseline from current source when possible.
 - **Import source history**: replays available source history in chronological order and imports bridge statistics history.
 
-You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.  
-Manual history import service: `energy_device_bridge.import_source_history` (target by `config_entry_id` or bridge `entity_id`).
+You can run these actions from Home Assistant services (`energy_device_bridge.*`) or from the integration's button entities.
+- `adopt_current_source_as_baseline`, `reset_tracker`, and `set_virtual_total` target bridge **energy entities**.
+- `import_source_history` targets a bridge **config entry** via required `config_entry_id`.
 
 History import behavior:
 - Uses Home Assistant recorder/history/statistics helper APIs only.
