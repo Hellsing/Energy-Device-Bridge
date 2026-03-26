@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create virtual consumer",
+        "description": "Create an Energy Device Bridge virtual consumer with a persistent Energy Dashboard total and swappable source entities.",
+        "data": {
+          "consumer_name": "Consumer name",
+          "source_power_entity_id": "Source power sensor",
+          "source_energy_entity_id": "Source energy sensor"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure virtual consumer",
+        "description": "Update this Energy Device Bridge consumer while preserving historical energy continuity.",
+        "data": {
+          "consumer_name": "Consumer name",
+          "source_power_entity_id": "Source power sensor",
+          "source_energy_entity_id": "Source energy sensor"
+        }
+      }
+    },
+    "error": {
+      "duplicate_pair": "This source power/energy pair is already used.",
+      "entity_not_found": "The selected entity does not exist.",
+      "must_be_sensor": "The selected entity must be a sensor.",
+      "name_required": "Please provide a name.",
+      "same_entity_pair": "Power and energy entities must be different.",
+      "power_not_numeric": "Power source must have numeric values.",
+      "energy_not_numeric": "Energy source must have numeric values.",
+      "invalid_power_unit": "Power source unit must be W or kW.",
+      "invalid_energy_unit": "Energy source unit must be Wh or kWh.",
+      "invalid_energy_state_class": "Energy source should use total or total_increasing state class."
+    },
+    "abort": {
+      "reconfigure_successful": "Configuration was updated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Power"
+      },
+      "energy": {
+        "name": "Energy"
+      }
+    }
+  }
+}
