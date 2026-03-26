@@ -29,7 +29,7 @@ def test_manifest_basics() -> None:
     assert manifest["domain"] == DOMAIN
     assert manifest["name"] == "Energy Device Bridge"
     assert manifest["config_flow"] is True
-    assert manifest["integration_type"] == "helper"
+    assert manifest["integration_type"] == "device"
     assert manifest["iot_class"] == "calculated"
     assert manifest["version"]
 
