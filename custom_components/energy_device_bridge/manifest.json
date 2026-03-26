@@ -1,8 +1,8 @@
 {
   "domain": "energy_device_bridge",
   "name": "Energy Device Bridge",
-  "codeowners": ["@Hellsing"],
   "after_dependencies": ["recorder"],
+  "codeowners": ["@Hellsing"],
   "config_flow": true,
   "documentation": "https://github.com/Hellsing/energy-device-bridge#readme",
   "integration_type": "device",
