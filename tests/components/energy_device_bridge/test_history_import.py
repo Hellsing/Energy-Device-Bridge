@@ -165,6 +165,9 @@ async def test_history_import_uses_recorder_helper_apis(hass: HomeAssistant) -> 
             return_value={},
         ) as last_stats_mock,
         patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+        ) as clear_stats_mock,
+        patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
             return_value={"sensor.src_energy": source_states},
         ) as history_mock,
@@ -178,6 +181,7 @@ async def test_history_import_uses_recorder_helper_apis(hass: HomeAssistant) -> 
         assert accepted
         await hass.async_block_till_done()
         assert not last_stats_mock.called
+        assert clear_stats_mock.called
         assert history_mock.called
         assert import_stats_mock.called
 
@@ -210,9 +214,18 @@ async def test_first_import_replays_from_full_available_history(hass: HomeAssist
             attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
             last_updated=dt_util.as_utc(datetime(2024, 1, 1, 1, 10)),
             last_changed=dt_util.as_utc(datetime(2024, 1, 1, 1, 10)),
-        )
+        ),
+        _MockHistoricalState(
+            state="2.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 1, 20)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 1, 20)),
+        ),
     ]
     with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+        ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
             return_value={"sensor.src_energy": source_states},
@@ -260,6 +273,12 @@ async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
         _MockHistoricalState(
             state="1.0",
             attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=previous_hour + timedelta(minutes=10),
+            last_changed=previous_hour + timedelta(minutes=10),
+        ),
+        _MockHistoricalState(
+            state="1.5",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
             last_updated=previous_hour + timedelta(minutes=30),
             last_changed=previous_hour + timedelta(minutes=30),
         ),
@@ -272,6 +291,9 @@ async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
     ]
 
     with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+        ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
             return_value={"sensor.src_energy": source_states},
@@ -289,6 +311,76 @@ async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
         rows = import_stats_mock.call_args.args[2]
         assert len(rows) == 1
         assert rows[0]["start"] == previous_hour
+
+
+@pytest.mark.asyncio
+async def test_import_drops_leading_zero_rows(hass: HomeAssistant) -> None:
+    """Leading zero-sum hours are not imported into recorder statistics."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-no-leading-zero",
+            CONF_CONSUMER_NAME: "Import No Leading Zero",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    hour_a = now - timedelta(hours=3)
+    hour_b = now - timedelta(hours=2)
+    hour_c = now - timedelta(hours=1)
+    source_states = [
+        _MockHistoricalState(
+            state="100.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=hour_a + timedelta(minutes=5),
+            last_changed=hour_a + timedelta(minutes=5),
+        ),
+        _MockHistoricalState(
+            state="100.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=hour_b + timedelta(minutes=5),
+            last_changed=hour_b + timedelta(minutes=5),
+        ),
+        _MockHistoricalState(
+            state="101.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=hour_c + timedelta(minutes=5),
+            last_changed=hour_c + timedelta(minutes=5),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ) as import_stats_mock,
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="button", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        rows = import_stats_mock.call_args.args[2]
+        assert len(rows) == 1
+        assert rows[0]["start"] == hour_c
+        assert rows[0]["sum"] == 1.0
 
 
 @pytest.mark.asyncio
