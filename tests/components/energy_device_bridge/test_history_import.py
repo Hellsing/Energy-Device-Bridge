@@ -314,8 +314,8 @@ async def test_import_excludes_current_hour_rows(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.asyncio
-async def test_import_drops_leading_zero_rows(hass: HomeAssistant) -> None:
-    """Leading zero-sum hours are not imported into recorder statistics."""
+async def test_import_keeps_only_first_leading_zero_row(hass: HomeAssistant) -> None:
+    """Keep first leading zero row, drop additional zero-only prefix rows."""
     hass.states.async_set(
         "sensor.src_energy",
         10,
@@ -378,9 +378,11 @@ async def test_import_drops_leading_zero_rows(hass: HomeAssistant) -> None:
         assert accepted
         await hass.async_block_till_done()
         rows = import_stats_mock.call_args.args[2]
-        assert len(rows) == 1
-        assert rows[0]["start"] == hour_c
-        assert rows[0]["sum"] == 1.0
+        assert len(rows) == 2
+        assert rows[0]["start"] == hour_a
+        assert rows[0]["sum"] == 0.0
+        assert rows[1]["start"] == hour_c
+        assert rows[1]["sum"] == 1.0
 
 
 @pytest.mark.asyncio

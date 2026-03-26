@@ -181,9 +181,16 @@ def _build_stats_rows(
         {"start": hour_start, "state": total, "sum": total}
         for hour_start, total in sorted(hours.items())
     ]
-    # Drop zero-only prefix so imported history starts at first meaningful total.
-    while rows and rows[0]["sum"] <= 0:
-        rows.pop(0)
+    # Keep exactly one initial zero row (if present) and drop additional
+    # zero-only prefix rows before the first positive total.
+    if rows:
+        first_positive_index: int | None = None
+        for idx, row in enumerate(rows):
+            if row["sum"] > 0:
+                first_positive_index = idx
+                break
+        if first_positive_index is not None and first_positive_index > 1:
+            rows = [rows[0], *rows[first_positive_index:]]
     if rows:
         period_start = rows[0]["start"]
         period_end = rows[-1]["start"]
