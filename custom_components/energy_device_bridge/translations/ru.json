@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "Создавать постоянное уведомление для меньших ненулевых значений источника",
           "copy_source_history_on_create": "Копировать/импортировать доступную историю источника в статистику bridge после создания этого bridge"
         }
-      },
-      "reconfigure": {
-        "title": "Перенастроить виртуального потребителя",
-        "description": "Обновите этого потребителя Energy Device Bridge, сохранив непрерывность истории энергии.",
-        "data": {
-          "consumer_name": "Название потребителя",
-          "source_power_entity_id": "Исходный датчик мощности (необязательно)",
-          "source_energy_entity_id": "Исходный датчик энергии"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "Эта пара источников мощности/энергии уже используется.",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "Единица измерения источника мощности должна быть W или kW.",
       "invalid_energy_unit": "Единица измерения источника энергии должна быть Wh или kWh.",
       "invalid_energy_state_class": "Источник энергии должен использовать state_class total или total_increasing."
-    },
-    "abort": {
-      "reconfigure_successful": "Конфигурация обновлена."
     }
   },
   "options": {

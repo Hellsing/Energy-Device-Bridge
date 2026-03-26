@@ -41,7 +41,9 @@ def _get_last_statistics(
 ) -> dict[str, list[dict[str, Any]]]:
     from homeassistant.components.recorder.statistics import get_last_statistics
 
-    return get_last_statistics(hass, number_of_stats, statistic_id, convert_units, types)
+    return get_last_statistics(
+        hass, number_of_stats, statistic_id, convert_units, types
+    )
 
 
 def _state_changes_during_period(
@@ -106,7 +108,9 @@ def _build_statistics_metadata(
     if _supports_statistics_metadata_field("mean_type"):
         mean_type_none: Any = "none"
         try:
-            from homeassistant.components.recorder.models.statistics import StatisticMeanType
+            from homeassistant.components.recorder.models.statistics import (
+                StatisticMeanType,
+            )
 
             mean_type_none = StatisticMeanType.NONE
         except Exception:  # noqa: BLE001 - fallback for version differences
@@ -161,9 +165,7 @@ def _convert_energy_to_kwh(value: float, unit: str | None) -> float | None:
         return None
 
 
-def _bridge_energy_entity_id(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> str | None:
+def _bridge_energy_entity_id(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
     if entry.runtime_data.energy_sensor and entry.runtime_data.energy_sensor.entity_id:
         return entry.runtime_data.energy_sensor.entity_id
     entity_registry = er.async_get(hass)
@@ -174,7 +176,9 @@ def _bridge_energy_entity_id(
     )
 
 
-def _manual_validation_error(key: str, placeholders: dict[str, str] | None = None) -> None:
+def _manual_validation_error(
+    key: str, placeholders: dict[str, str] | None = None
+) -> None:
     raise ServiceValidationError(
         "Energy Device Bridge history import validation error",
         translation_domain=DOMAIN,
@@ -216,7 +220,9 @@ def _build_stats_rows(
         if source_kwh is None:
             continue
 
-        sample_ts = source_state.last_updated or source_state.last_changed or dt_util.utcnow()
+        sample_ts = (
+            source_state.last_updated or source_state.last_changed or dt_util.utcnow()
+        )
         sample_ts = dt_util.as_utc(sample_ts)
         sample_count += 1
         result = apply_source_sample(
@@ -385,10 +391,14 @@ async def _async_run_import(
                     tracker.history_import_last_imported_hour_start
                 )
                 if last_imported_hour is not None:
-                    import_start_hour = dt_util.as_utc(last_imported_hour) + timedelta(hours=1)
+                    import_start_hour = dt_util.as_utc(last_imported_hour) + timedelta(
+                        hours=1
+                    )
             else:
                 if latest_rows:
-                    last_row_start = dt_util.utc_from_timestamp(latest_rows[-1]["start"])
+                    last_row_start = dt_util.utc_from_timestamp(
+                        latest_rows[-1]["start"]
+                    )
                     import_start_hour = last_row_start + timedelta(hours=1)
         else:
             await _async_clear_statistics_and_wait(hass, bridge_entity_id)
@@ -401,7 +411,9 @@ async def _async_run_import(
             source_entity_id,
         )
         source_states = history_data.get(source_entity_id, [])
-        zero_drop_policy = str(entry.options.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY))
+        zero_drop_policy = str(
+            entry.options.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY)
+        )
         stats_rows, sample_count, period_start, period_end = _build_stats_rows(
             source_states,
             replay_tracker,
@@ -449,7 +461,9 @@ async def _async_run_import(
                 tracker.last_valid_source_sample_ts = now_iso
                 tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
 
-            if bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)):
+            if bool(
+                entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)
+            ):
                 hass.config_entries.async_update_entry(
                     entry,
                     options={
@@ -469,13 +483,19 @@ async def _async_run_import(
         tracker.history_import_period_start = (
             period_start.isoformat() if period_start else None
         )
-        tracker.history_import_period_end = period_end.isoformat() if period_end else None
+        tracker.history_import_period_end = (
+            period_end.isoformat() if period_end else None
+        )
         tracker.history_import_last_imported_hour_start = (
-            period_end.isoformat() if period_end else tracker.history_import_last_imported_hour_start
+            period_end.isoformat()
+            if period_end
+            else tracker.history_import_last_imported_hour_start
         )
         await entry.runtime_data.store.async_save(tracker)
         if entry.runtime_data.energy_sensor is not None:
-            await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(tracker)
+            await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(
+                tracker
+            )
 
         summary = (
             f"Trigger: {trigger}\n"
@@ -511,5 +531,3 @@ async def _async_run_import(
             title="Energy Device Bridge history import failed",
             notification_id=_build_notification_id(entry.entry_id),
         )
-
-

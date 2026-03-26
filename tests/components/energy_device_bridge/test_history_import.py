@@ -23,7 +23,9 @@ from custom_components.energy_device_bridge.const import (
     DOMAIN,
     SERVICE_IMPORT_SOURCE_HISTORY,
 )
-from custom_components.energy_device_bridge.history_import import async_request_history_import
+from custom_components.energy_device_bridge.history_import import (
+    async_request_history_import,
+)
 
 
 @dataclass
@@ -193,7 +195,9 @@ async def test_history_import_uses_recorder_helper_apis(hass: HomeAssistant) -> 
 
 
 @pytest.mark.asyncio
-async def test_first_import_replays_from_full_available_history(hass: HomeAssistant) -> None:
+async def test_first_import_replays_from_full_available_history(
+    hass: HomeAssistant,
+) -> None:
     """First import must not anchor to existing bridge statistics window."""
     hass.states.async_set(
         "sensor.src_energy",
@@ -395,7 +399,9 @@ async def test_import_keeps_only_first_leading_zero_row(hass: HomeAssistant) -> 
 
 
 @pytest.mark.asyncio
-async def test_copy_on_create_not_invoked_again_after_reload(hass: HomeAssistant) -> None:
+async def test_copy_on_create_not_invoked_again_after_reload(
+    hass: HomeAssistant,
+) -> None:
     """Create-time copy should run once and never re-run on restart/reload."""
     hass.states.async_set(
         "sensor.src_energy",
@@ -431,7 +437,9 @@ async def test_copy_on_create_not_invoked_again_after_reload(hass: HomeAssistant
 
 
 @pytest.mark.asyncio
-async def test_successful_import_clears_creation_pending_flag(hass: HomeAssistant) -> None:
+async def test_successful_import_clears_creation_pending_flag(
+    hass: HomeAssistant,
+) -> None:
     """Successful import clears pending flag so sensor can become available."""
     hass.states.async_set(
         "sensor.src_energy",
@@ -488,4 +496,6 @@ async def test_successful_import_clears_creation_pending_flag(hass: HomeAssistan
         )
         assert accepted
         await hass.async_block_till_done()
-        assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+        assert (
+            entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+        )

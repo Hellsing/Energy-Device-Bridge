@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "Dauerhafte Benachrichtigung bei niedrigerem, nicht-null Quellwert erstellen",
           "copy_source_history_on_create": "Verfügbare Quellhistorie nach der Erstellung in die Bridge-Statistiken importieren"
         }
-      },
-      "reconfigure": {
-        "title": "Virtuellen Verbraucher neu konfigurieren",
-        "description": "Aktualisiere diesen Energy Device Bridge-Verbraucher, ohne die bisherige Energiehistorie zu verlieren.",
-        "data": {
-          "consumer_name": "Name des Verbrauchers",
-          "source_power_entity_id": "Quell-Leistungssensor (optional)",
-          "source_energy_entity_id": "Quell-Energiesensor"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "Dieses Leistungs-/Energiequellenpaar wird bereits verwendet.",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "Leistungsquelle muss die Einheit W oder kW haben.",
       "invalid_energy_unit": "Energiequelle muss die Einheit Wh oder kWh haben.",
       "invalid_energy_state_class": "Energiequelle sollte die Zustandsklasse total oder total_increasing verwenden."
-    },
-    "abort": {
-      "reconfigure_successful": "Konfiguration wurde aktualisiert."
     }
   },
   "options": {

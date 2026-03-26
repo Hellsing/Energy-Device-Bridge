@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "Maak een permanente melding voor lagere niet-nul bronwaarden",
           "copy_source_history_on_create": "Kopieer/importeer beschikbare brongeschiedenis in bridge-statistieken na het maken van deze bridge"
         }
-      },
-      "reconfigure": {
-        "title": "Virtuele verbruiker opnieuw configureren",
-        "description": "Werk deze Energy Device Bridge-verbruiker bij terwijl de historische energiecontinuïteit behouden blijft.",
-        "data": {
-          "consumer_name": "Naam van de verbruiker",
-          "source_power_entity_id": "Bronvermogenssensor (optioneel)",
-          "source_energy_entity_id": "Bronenergiesensor"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "Dit bronpaar vermogen/energie wordt al gebruikt.",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "De eenheid van de vermogensbron moet W of kW zijn.",
       "invalid_energy_unit": "De eenheid van de energiebron moet Wh of kWh zijn.",
       "invalid_energy_state_class": "De energiebron moet de state_class total of total_increasing gebruiken."
-    },
-    "abort": {
-      "reconfigure_successful": "De configuratie is bijgewerkt."
     }
   },
   "options": {

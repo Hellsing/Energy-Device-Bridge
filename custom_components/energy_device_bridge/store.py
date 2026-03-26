@@ -48,7 +48,9 @@ class EnergyDeviceBridgeStore:
         """Return latest pending state for delayed save."""
         return self._pending_data or {}
 
-    async def async_flush_pending(self, state: EnergyTrackerState | None = None) -> None:
+    async def async_flush_pending(
+        self, state: EnergyTrackerState | None = None
+    ) -> None:
         """Flush latest known state immediately."""
         if state is not None:
             self._pending_data = state.as_dict()

@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "Utwórz trwałe powiadomienie dla niższych, niezerowych wartości źródłowych",
           "copy_source_history_on_create": "Skopiuj/zaimportuj dostępną historię źródła do statystyk bridge po utworzeniu tego bridge"
         }
-      },
-      "reconfigure": {
-        "title": "Skonfiguruj ponownie wirtualnego odbiorcę",
-        "description": "Zaktualizuj tego odbiorcę Energy Device Bridge, zachowując ciągłość historii energii.",
-        "data": {
-          "consumer_name": "Nazwa odbiorcy",
-          "source_power_entity_id": "Źródłowy czujnik mocy (opcjonalnie)",
-          "source_energy_entity_id": "Źródłowy czujnik energii"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "Ta para źródeł mocy/energii jest już używana.",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "Jednostka źródła mocy musi być W lub kW.",
       "invalid_energy_unit": "Jednostka źródła energii musi być Wh lub kWh.",
       "invalid_energy_state_class": "Źródło energii powinno używać state_class total lub total_increasing."
-    },
-    "abort": {
-      "reconfigure_successful": "Konfiguracja została zaktualizowana."
     }
   },
   "options": {

@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "当源值变为更低的非零值时创建持久通知",
           "copy_source_history_on_create": "创建此 bridge 后，将可用源历史复制/导入到 bridge 统计信息中"
         }
-      },
-      "reconfigure": {
-        "title": "重新配置虚拟用电设备",
-        "description": "在保留历史能量连续性的同时，更新此 Energy Device Bridge 用电设备。",
-        "data": {
-          "consumer_name": "设备名称",
-          "source_power_entity_id": "源功率传感器（可选）",
-          "source_energy_entity_id": "源能量传感器"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "该功率/能量源组合已被使用。",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "功率源单位必须为 W 或 kW。",
       "invalid_energy_unit": "能量源单位必须为 Wh 或 kWh。",
       "invalid_energy_state_class": "能量源应使用 total 或 total_increasing 的 state_class。"
-    },
-    "abort": {
-      "reconfigure_successful": "配置已更新。"
     }
   },
   "options": {

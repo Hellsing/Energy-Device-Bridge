@@ -58,7 +58,9 @@ class EnergyDeviceBridgeAdoptBaselineButton(EnergyDeviceBridgeButtonBase):
 
     def __init__(self, entry: EnergyDeviceBridgeConfigEntry) -> None:
         super().__init__(entry)
-        self._attr_unique_id = f"{self._consumer.consumer_uuid}_adopt_current_source_as_baseline"
+        self._attr_unique_id = (
+            f"{self._consumer.consumer_uuid}_adopt_current_source_as_baseline"
+        )
 
     async def async_press(self) -> None:
         """Handle button press."""

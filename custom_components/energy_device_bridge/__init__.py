@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING
@@ -151,7 +152,10 @@ def _resolve_energy_sensors_from_entity_ids(
             _raise_service_validation_error("service_entry_not_loaded")
 
         runtime_data = entry.runtime_data
-        if runtime_data.energy_sensor is None or runtime_data.energy_sensor.entity_id is None:
+        if (
+            runtime_data.energy_sensor is None
+            or runtime_data.energy_sensor.entity_id is None
+        ):
             _raise_service_validation_error("service_energy_sensor_unavailable")
         if runtime_data.energy_sensor.entity_id != entity_id:
             _raise_service_validation_error(
@@ -161,11 +165,18 @@ def _resolve_energy_sensors_from_entity_ids(
     return list(sensors_by_entry_id.values())
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry
+) -> bool:
     """Set up Energy Device Bridge from a config entry."""
     consumer = resolve_consumer_config(entry.data)
+    entry_updates: dict[str, str] = {}
     if entry.title != consumer.consumer_name:
-        hass.config_entries.async_update_entry(entry, title=consumer.consumer_name)
+        entry_updates["title"] = consumer.consumer_name
+    if entry.unique_id != consumer.consumer_uuid:
+        entry_updates["unique_id"] = consumer.consumer_uuid
+    if entry_updates:
+        hass.config_entries.async_update_entry(entry, **entry_updates)
     device_info = DeviceInfo(
         identifiers={(DOMAIN, consumer.consumer_uuid)},
         manufacturer="Energy Device Bridge",
@@ -262,11 +273,18 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> bool:
+async def async_unload_entry(
+    hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry
+) -> bool:
     """Unload a config entry."""
     runtime_data = entry.runtime_data
-    if runtime_data.history_import_task is not None and not runtime_data.history_import_task.done():
+    if (
+        runtime_data.history_import_task is not None
+        and not runtime_data.history_import_task.done()
+    ):
         runtime_data.history_import_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await runtime_data.history_import_task
         runtime_data.history_import_task = None
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
@@ -274,40 +292,100 @@ async def async_unload_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfi
     return unloaded
 
 
-async def async_remove_entry(hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry) -> None:
-    """Remove config entry and persisted metadata."""
-    _async_clear_bridge_statistics_for_entry(hass, entry)
+async def async_remove_entry(
+    hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry
+) -> None:
+    """Remove config entry and persisted metadata/history for owned entities."""
+    _async_cleanup_recorder_for_entry(hass, entry)
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is not None:
+        runtime_data.dismiss_all_issues(hass)
     await EnergyDeviceBridgeStore(hass, entry.entry_id).async_remove()
 
 
-def _async_clear_bridge_statistics_for_entry(
+def _async_entry_entity_ids(
+    hass: HomeAssistant,
+    entry: EnergyDeviceBridgeConfigEntry,
+) -> list[str]:
+    """Return current entity_ids owned by one config entry."""
+    entity_registry = er.async_get(hass)
+    owned_entity_ids = [
+        entity.entity_id
+        for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    ]
+
+    # Fallback for edge cases where entity registry entries were already removed.
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is not None and runtime_data.energy_sensor is not None:
+        entity_id = runtime_data.energy_sensor.entity_id
+        if entity_id is not None and entity_id not in owned_entity_ids:
+            owned_entity_ids.append(entity_id)
+
+    if not owned_entity_ids:
+        consumer = resolve_consumer_config(entry.data)
+        fallback_entity_id = entity_registry.async_get_entity_id(
+            "sensor",
+            DOMAIN,
+            f"{consumer.consumer_uuid}_energy",
+        )
+        if fallback_entity_id is not None:
+            owned_entity_ids.append(fallback_entity_id)
+    return owned_entity_ids
+
+
+def _async_cleanup_recorder_history_for_entity_ids(
+    hass: HomeAssistant,
+    entity_ids: list[str],
+) -> None:
+    """Best-effort clear of recorder state history for entities."""
+    if not entity_ids:
+        return
+    recorder_instance = _get_recorder_instance(hass)
+    clear_entities = getattr(recorder_instance, "async_clear_entities", None)
+    if callable(clear_entities):
+        clear_entities(entity_ids)
+        return
+
+    clear_entity = getattr(recorder_instance, "async_clear_entity", None)
+    if callable(clear_entity):
+        for entity_id in entity_ids:
+            clear_entity(entity_id)
+        return
+
+    _LOGGER.debug(
+        "Recorder entity-history cleanup API unavailable; entity_ids=%s",
+        entity_ids,
+    )
+
+
+def _async_cleanup_recorder_for_entry(
     hass: HomeAssistant,
     entry: EnergyDeviceBridgeConfigEntry,
 ) -> None:
-    """Best-effort clear of bridge long-term statistics for removed entry."""
+    """Best-effort cleanup of recorder history/statistics for removed entry."""
+    entity_ids = _async_entry_entity_ids(hass, entry)
+    if not entity_ids:
+        return
+    statistic_ids = [
+        entity_id for entity_id in entity_ids if entity_id.startswith("sensor.")
+    ]
     try:
-        entity_id: str | None = None
-        runtime_data = getattr(entry, "runtime_data", None)
-        if runtime_data is not None and runtime_data.energy_sensor is not None:
-            entity_id = runtime_data.energy_sensor.entity_id
-        if entity_id is None:
-            consumer = resolve_consumer_config(entry.data)
-            entity_id = er.async_get(hass).async_get_entity_id(
-                "sensor",
-                DOMAIN,
-                f"{consumer.consumer_uuid}_energy",
-            )
-        if entity_id is None:
-            return
-        from homeassistant.components.recorder import get_instance
-
-        get_instance(hass).async_clear_statistics([entity_id])
+        _async_cleanup_recorder_history_for_entity_ids(hass, entity_ids)
+        if statistic_ids:
+            _get_recorder_instance(hass).async_clear_statistics(statistic_ids)
     except Exception:  # noqa: BLE001 - do not block entry removal
         _LOGGER.debug(
-            "Unable to clear recorder statistics while removing entry %s",
+            "Unable to clear recorder data while removing entry %s",
             entry.entry_id,
             exc_info=True,
         )
+
+
+def _get_recorder_instance(hass: HomeAssistant):
+    """Return active recorder instance for API calls."""
+    from homeassistant.components.recorder import get_instance
+
+    return get_instance(hass)
 
 
 async def async_remove_config_entry_device(
@@ -315,7 +393,9 @@ async def async_remove_config_entry_device(
     config_entry: EnergyDeviceBridgeConfigEntry,
     device_entry: dr.DeviceEntry,
 ) -> bool:
-    """Delete device by removing the owning config entry and its entities."""
+    """Delete one bridge device by removing the owning config entry."""
+    if config_entry.entry_id not in device_entry.config_entries:
+        return False
     if not any(identifier[0] == DOMAIN for identifier in device_entry.identifiers):
         return False
     return await hass.config_entries.async_remove(config_entry.entry_id)

@@ -12,16 +12,8 @@
           "notify_on_lower_non_zero": "Crear notificación persistente para valores de origen no nulos inferiores",
           "copy_source_history_on_create": "Copiar/importar el historial de origen disponible en las estadísticas del bridge después de crear este bridge"
         }
-      },
-      "reconfigure": {
-        "title": "Reconfigurar consumidor virtual",
-        "description": "Actualiza este consumidor de Energy Device Bridge manteniendo la continuidad histórica de la energía.",
-        "data": {
-          "consumer_name": "Nombre del consumidor",
-          "source_power_entity_id": "Sensor de potencia de origen (opcional)",
-          "source_energy_entity_id": "Sensor de energía de origen"
-        }
       }
+      
     },
     "error": {
       "duplicate_pair": "Este par de fuentes de potencia/energía ya se está utilizando.",
@@ -34,9 +26,6 @@
       "invalid_power_unit": "La unidad de la fuente de potencia debe ser W o kW.",
       "invalid_energy_unit": "La unidad de la fuente de energía debe ser Wh o kWh.",
       "invalid_energy_state_class": "La fuente de energía debería usar la clase de estado total o total_increasing."
-    },
-    "abort": {
-      "reconfigure_successful": "Se actualizó la configuración."
     }
   },
   "options": {

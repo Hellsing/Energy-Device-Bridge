@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.helpers import device_registry as dr
@@ -30,7 +30,9 @@ from custom_components.energy_device_bridge.const import (
 def test_manifest_basics() -> None:
     """Manifest has required standalone custom integration metadata."""
     manifest = json.loads(
-        Path("custom_components/energy_device_bridge/manifest.json").read_text(encoding="utf-8")
+        Path("custom_components/energy_device_bridge/manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert manifest["domain"] == DOMAIN
     assert manifest["name"] == "Energy Device Bridge"
@@ -54,7 +56,9 @@ async def test_import_service_registered(hass) -> None:
 @pytest.mark.asyncio
 async def test_setup_unload_and_remove_entry(hass) -> None:
     """Entry sets up entities, unloads cleanly, and removes storage file."""
-    hass.states.async_set("sensor.power_source", 100, {"unit_of_measurement": UnitOfPower.WATT})
+    hass.states.async_set(
+        "sensor.power_source", 100, {"unit_of_measurement": UnitOfPower.WATT}
+    )
     hass.states.async_set(
         "sensor.energy_source",
         10,
@@ -95,7 +99,7 @@ async def test_setup_unload_and_remove_entry(hass) -> None:
     assert hass.states.get(energy_entity_id).state == "unavailable"
 
     with patch(
-        "custom_components.energy_device_bridge._async_clear_bridge_statistics_for_entry"
+        "custom_components.energy_device_bridge._async_cleanup_recorder_for_entry"
     ) as clear_stats_mock:
         assert await hass.config_entries.async_remove(entry.entry_id)
         await hass.async_block_till_done()
@@ -105,7 +109,9 @@ async def test_setup_unload_and_remove_entry(hass) -> None:
 @pytest.mark.asyncio
 async def test_delete_device_removes_config_entry_and_child_entities(hass) -> None:
     """Removing the bridge device removes the owning config entry and entities."""
-    hass.states.async_set("sensor.power_source", 100, {"unit_of_measurement": UnitOfPower.WATT})
+    hass.states.async_set(
+        "sensor.power_source", 100, {"unit_of_measurement": UnitOfPower.WATT}
+    )
     hass.states.async_set(
         "sensor.energy_source",
         10,
@@ -144,3 +150,88 @@ async def test_delete_device_removes_config_entry_and_child_entities(hass) -> No
     assert hass.config_entries.async_get_entry(entry.entry_id) is None
     assert entity_registry.async_get(power_entity_id) is None
     assert entity_registry.async_get(energy_entity_id) is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_recorder_for_entry_clears_history_and_statistics(hass) -> None:
+    """Removing an entry clears recorder rows and statistics for owned entities."""
+    hass.states.async_set(
+        "sensor.energy_source",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-recorder-cleanup",
+            CONF_CONSUMER_NAME: "Recorder Cleanup",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.energy_source",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    clear_entities = Mock()
+    clear_statistics = Mock()
+    with patch(
+        "custom_components.energy_device_bridge._get_recorder_instance",
+        return_value=Mock(
+            async_clear_entities=clear_entities,
+            async_clear_statistics=clear_statistics,
+        ),
+    ):
+        assert await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+
+    clear_entities.assert_called_once()
+    cleared_entity_ids = clear_entities.call_args.args[0]
+    assert any(
+        entity_id.startswith("sensor.recorder_cleanup")
+        for entity_id in cleared_entity_ids
+    )
+
+    clear_statistics.assert_called_once()
+    cleared_statistic_ids = clear_statistics.call_args.args[0]
+    assert all(
+        statistic_id.startswith("sensor.") for statistic_id in cleared_statistic_ids
+    )
+    assert any(
+        statistic_id.startswith("sensor.recorder_cleanup")
+        for statistic_id in cleared_statistic_ids
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_device_rejects_unrelated_device(hass) -> None:
+    """Device removal callback returns False for non-bridge devices."""
+    hass.states.async_set(
+        "sensor.energy_source",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-unrelated",
+            CONF_CONSUMER_NAME: "Unrelated Device",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.energy_source",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    other_entry = MockConfigEntry(
+        domain="test_domain",
+        data={},
+    )
+    other_entry.add_to_hass(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={("test_domain", "test-device")},
+    )
+    assert not await async_remove_config_entry_device(hass, entry, device)

@@ -125,9 +125,13 @@ class EnergyTrackerState:
                 else None
             ),
             last_valid_source_sample_ts=data.get(ATTR_LAST_VALID_SOURCE_SAMPLE_TS),
-            ignored_negative_delta_count=int(data.get(ATTR_IGNORED_NEGATIVE_DELTA_COUNT, 0)),
+            ignored_negative_delta_count=int(
+                data.get(ATTR_IGNORED_NEGATIVE_DELTA_COUNT, 0)
+            ),
             reset_detected_count=int(data.get(ATTR_RESET_DETECTED_COUNT, 0)),
-            current_normalized_source_unit=data.get(ATTR_CURRENT_NORMALIZED_SOURCE_UNIT),
+            current_normalized_source_unit=data.get(
+                ATTR_CURRENT_NORMALIZED_SOURCE_UNIT
+            ),
             awaiting_non_zero_after_zero_drop=bool(
                 data.get(ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP, False)
             ),
@@ -136,9 +140,15 @@ class EnergyTrackerState:
             zero_drop_count=int(data.get(ATTR_ZERO_DROP_COUNT, 0)),
             last_lower_value_event=data.get(ATTR_LAST_LOWER_VALUE_EVENT),
             history_import_has_run=bool(data.get(ATTR_HISTORY_IMPORT_HAS_RUN, False)),
-            history_import_in_progress=bool(data.get(ATTR_HISTORY_IMPORT_IN_PROGRESS, False)),
-            history_import_last_started_at=data.get(ATTR_HISTORY_IMPORT_LAST_STARTED_AT),
-            history_import_last_finished_at=data.get(ATTR_HISTORY_IMPORT_LAST_FINISHED_AT),
+            history_import_in_progress=bool(
+                data.get(ATTR_HISTORY_IMPORT_IN_PROGRESS, False)
+            ),
+            history_import_last_started_at=data.get(
+                ATTR_HISTORY_IMPORT_LAST_STARTED_AT
+            ),
+            history_import_last_finished_at=data.get(
+                ATTR_HISTORY_IMPORT_LAST_FINISHED_AT
+            ),
             history_import_last_result=data.get(ATTR_HISTORY_IMPORT_LAST_RESULT),
             history_import_last_error=data.get(ATTR_HISTORY_IMPORT_LAST_ERROR),
             history_import_retention_limited=bool(
@@ -147,7 +157,9 @@ class EnergyTrackerState:
             history_import_samples_processed=int(
                 data.get(ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED, 0)
             ),
-            history_import_hours_imported=int(data.get(ATTR_HISTORY_IMPORT_HOURS_IMPORTED, 0)),
+            history_import_hours_imported=int(
+                data.get(ATTR_HISTORY_IMPORT_HOURS_IMPORTED, 0)
+            ),
             history_import_period_start=data.get(ATTR_HISTORY_IMPORT_PERIOD_START),
             history_import_period_end=data.get(ATTR_HISTORY_IMPORT_PERIOD_END),
             history_import_last_imported_hour_start=data.get(

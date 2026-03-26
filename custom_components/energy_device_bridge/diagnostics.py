@@ -65,7 +65,9 @@ async def async_get_config_entry_diagnostics(
                 if entry.runtime_data.energy_sensor is not None
                 else {
                     ATTR_LAST_VALID_SOURCE_SAMPLE_TS: (
-                        stored_state.last_valid_source_sample_ts if stored_state else None
+                        stored_state.last_valid_source_sample_ts
+                        if stored_state
+                        else None
                     ),
                     ATTR_IGNORED_NEGATIVE_DELTA_COUNT: (
                         stored_state.ignored_negative_delta_count if stored_state else 0
@@ -74,7 +76,9 @@ async def async_get_config_entry_diagnostics(
                         stored_state.reset_detected_count if stored_state else 0
                     ),
                     ATTR_CURRENT_NORMALIZED_SOURCE_UNIT: (
-                        stored_state.current_normalized_source_unit if stored_state else None
+                        stored_state.current_normalized_source_unit
+                        if stored_state
+                        else None
                     ),
                     CONF_COPY_SOURCE_HISTORY_ON_CREATE: entry.options.get(
                         CONF_COPY_SOURCE_HISTORY_ON_CREATE, True
@@ -83,16 +87,24 @@ async def async_get_config_entry_diagnostics(
                         stored_state.history_import_has_run if stored_state else False
                     ),
                     ATTR_HISTORY_IMPORT_IN_PROGRESS: (
-                        stored_state.history_import_in_progress if stored_state else False
+                        stored_state.history_import_in_progress
+                        if stored_state
+                        else False
                     ),
                     ATTR_HISTORY_IMPORT_LAST_STARTED_AT: (
-                        stored_state.history_import_last_started_at if stored_state else None
+                        stored_state.history_import_last_started_at
+                        if stored_state
+                        else None
                     ),
                     ATTR_HISTORY_IMPORT_LAST_FINISHED_AT: (
-                        stored_state.history_import_last_finished_at if stored_state else None
+                        stored_state.history_import_last_finished_at
+                        if stored_state
+                        else None
                     ),
                     ATTR_HISTORY_IMPORT_LAST_RESULT: (
-                        stored_state.history_import_last_result if stored_state else None
+                        stored_state.history_import_last_result
+                        if stored_state
+                        else None
                     ),
                     ATTR_HISTORY_IMPORT_LAST_ERROR: (
                         stored_state.history_import_last_error if stored_state else None
@@ -103,13 +115,19 @@ async def async_get_config_entry_diagnostics(
                         else False
                     ),
                     ATTR_HISTORY_IMPORT_SAMPLES_PROCESSED: (
-                        stored_state.history_import_samples_processed if stored_state else 0
+                        stored_state.history_import_samples_processed
+                        if stored_state
+                        else 0
                     ),
                     ATTR_HISTORY_IMPORT_HOURS_IMPORTED: (
-                        stored_state.history_import_hours_imported if stored_state else 0
+                        stored_state.history_import_hours_imported
+                        if stored_state
+                        else 0
                     ),
                     ATTR_HISTORY_IMPORT_PERIOD_START: (
-                        stored_state.history_import_period_start if stored_state else None
+                        stored_state.history_import_period_start
+                        if stored_state
+                        else None
                     ),
                     ATTR_HISTORY_IMPORT_PERIOD_END: (
                         stored_state.history_import_period_end if stored_state else None
@@ -120,7 +138,9 @@ async def async_get_config_entry_diagnostics(
                         else None
                     ),
                     ATTR_HISTORY_IMPORT_CREATE_INVOKED: (
-                        stored_state.history_import_create_invoked if stored_state else False
+                        stored_state.history_import_create_invoked
+                        if stored_state
+                        else False
                     ),
                 }
             ),

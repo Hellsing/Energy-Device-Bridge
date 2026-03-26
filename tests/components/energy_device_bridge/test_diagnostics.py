@@ -24,9 +24,13 @@ from custom_components.energy_device_bridge.diagnostics import (
 
 
 @pytest.mark.asyncio
-async def test_config_entry_diagnostics_redacts_sensitive_fields(hass: HomeAssistant) -> None:
+async def test_config_entry_diagnostics_redacts_sensitive_fields(
+    hass: HomeAssistant,
+) -> None:
     """Diagnostics redact user-specific and source entity details."""
-    hass.states.async_set("sensor.src_power", 400, {"unit_of_measurement": UnitOfPower.WATT})
+    hass.states.async_set(
+        "sensor.src_power", 400, {"unit_of_measurement": UnitOfPower.WATT}
+    )
     hass.states.async_set(
         "sensor.src_energy",
         15,
@@ -58,9 +62,13 @@ async def test_config_entry_diagnostics_redacts_sensitive_fields(hass: HomeAssis
     assert diagnostics["stored_state"]["last_source_entity_id"] == "**REDACTED**"
     assert "runtime" in diagnostics
     assert "ignored_negative_delta_count" in diagnostics["runtime"]
-    assert diagnostics["entry"]["options"][CONF_ZERO_DROP_POLICY] == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
+    assert (
+        diagnostics["entry"]["options"][CONF_ZERO_DROP_POLICY]
+        == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
+    )
     assert diagnostics["entry"]["options"][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
     assert (
         diagnostics["runtime"][CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
-        or diagnostics["entry"]["options"].get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True) is True
+        or diagnostics["entry"]["options"].get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True)
+        is True
     )

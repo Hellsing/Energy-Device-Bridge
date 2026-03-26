@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import logging
 from typing import Any
 from uuid import uuid4
 
@@ -43,8 +42,6 @@ from .const import (
     ZERO_DROP_POLICIES,
 )
 from .models import resolve_consumer_config
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -232,13 +229,18 @@ def _validate_user_input(
         (CONF_SOURCE_ENERGY_ENTITY_ID, source_energy_entity_id),
     ]
     if source_power_entity_id:
-        entities_to_validate.append((CONF_SOURCE_POWER_ENTITY_ID, source_power_entity_id))
+        entities_to_validate.append(
+            (CONF_SOURCE_POWER_ENTITY_ID, source_power_entity_id)
+        )
 
     for field, entity_id in entities_to_validate:
         if not _validate_entity_kind(entity_id):
             _set_error(field, "must_be_sensor")
             continue
-        if not entity_registry.async_is_registered(entity_id) and hass.states.get(entity_id) is None:
+        if (
+            not entity_registry.async_is_registered(entity_id)
+            and hass.states.get(entity_id) is None
+        ):
             _set_error(field, "entity_not_found")
 
     if source_power_entity_id:
@@ -246,7 +248,10 @@ def _validate_user_input(
         if power_state is not None:
             power_numeric = _parse_numeric_state_value(power_state.state)
             power_unit = power_state.attributes.get("unit_of_measurement")
-            if power_numeric is None and power_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            if power_numeric is None and power_state.state not in (
+                STATE_UNKNOWN,
+                STATE_UNAVAILABLE,
+            ):
                 _set_error(CONF_SOURCE_POWER_ENTITY_ID, "power_not_numeric")
             elif power_unit and not _is_power_unit_supported(power_unit):
                 _set_error(CONF_SOURCE_POWER_ENTITY_ID, "invalid_power_unit")
@@ -255,7 +260,10 @@ def _validate_user_input(
     if energy_state is not None:
         energy_numeric = _parse_numeric_state_value(energy_state.state)
         energy_unit = energy_state.attributes.get("unit_of_measurement")
-        if energy_numeric is None and energy_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+        if energy_numeric is None and energy_state.state not in (
+            STATE_UNKNOWN,
+            STATE_UNAVAILABLE,
+        ):
             _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "energy_not_numeric")
         if not _is_energy_unit_supported(energy_unit):
             _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "invalid_energy_unit")
@@ -285,23 +293,11 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    def _resolve_reconfigure_entry(self) -> ConfigEntry:
-        """Return the entry being reconfigured across HA core versions."""
-        get_reconfigure_entry = getattr(self, "_get_reconfigure_entry", None)
-        if callable(get_reconfigure_entry):
-            return get_reconfigure_entry()
-
-        entry_id = self.context.get("entry_id")
-        if not isinstance(entry_id, str):
-            raise ValueError("Missing reconfigure entry_id in flow context")
-        entry = self.hass.config_entries.async_get_entry(entry_id)
-        if entry is None:
-            raise ValueError(f"Config entry not found: {entry_id}")
-        return entry
-
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> EnergyDeviceBridgeOptionsFlow:
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> EnergyDeviceBridgeOptionsFlow:
         """Create the options flow to edit entry configuration from the gear menu."""
         return EnergyDeviceBridgeOptionsFlow(config_entry)
 
@@ -361,61 +357,6 @@ class EnergyDeviceBridgeConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Handle config entry reconfiguration."""
-        entry = self._resolve_reconfigure_entry()
-        entry_unique_id = entry.unique_id or entry.data.get(CONF_CONSUMER_UUID)
-        defaults = resolve_consumer_config(entry.data)
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            result = _validate_user_input(
-                self.hass,
-                self._async_current_entries(),
-                user_input,
-                skip_entry_id=entry.entry_id,
-            )
-            if not result.errors and result.validated_data:
-                if entry_unique_id is not None:
-                    await self.async_set_unique_id(entry_unique_id)
-                if entry.unique_id is not None:
-                    self._abort_if_unique_id_mismatch()
-                _LOGGER.debug("Reconfiguring Energy Device Bridge entry %s", entry.entry_id)
-                try:
-                    return self.async_update_reload_and_abort(
-                        entry,
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data_updates=result.validated_data,
-                        reason="reconfigure_successful",
-                    )
-                except TypeError:
-                    # Compatibility path for older Home Assistant cores.
-                    self.hass.config_entries.async_update_entry(
-                        entry,
-                        title=result.validated_data[CONF_CONSUMER_NAME],
-                        data={
-                            **entry.data,
-                            **result.validated_data,
-                        },
-                    )
-                    await self.hass.config_entries.async_reload(entry.entry_id)
-                    return self.async_abort(reason="reconfigure_successful")
-            errors = result.errors
-
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=_selector_schema(
-                {
-                    CONF_CONSUMER_NAME: defaults.consumer_name,
-                    CONF_SOURCE_POWER_ENTITY_ID: defaults.source_power_entity_id,
-                    CONF_SOURCE_ENERGY_ENTITY_ID: defaults.source_energy_entity_id,
-                }
-            ),
-            errors=errors,
-        )
-
 
 class EnergyDeviceBridgeOptionsFlow(OptionsFlowWithConfigEntry):
     """Options flow used by the config entry gear menu."""
@@ -434,7 +375,8 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlowWithConfigEntry):
                 CONF_NOTIFY_ON_LOWER_NON_ZERO, DEFAULT_NOTIFY_ON_LOWER_NON_ZERO
             ),
             CONF_COPY_SOURCE_HISTORY_ON_CREATE: config_entry.options.get(
-                CONF_COPY_SOURCE_HISTORY_ON_CREATE, DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE
+                CONF_COPY_SOURCE_HISTORY_ON_CREATE,
+                DEFAULT_COPY_SOURCE_HISTORY_ON_CREATE,
             ),
         }
         errors: dict[str, str] = {}

@@ -92,7 +92,11 @@ def _parse_numeric(value: StateType) -> float | None:
     """Parse numeric state values and ignore special states."""
     if value is None:
         return None
-    if isinstance(value, str) and value.lower() in {"none", STATE_UNKNOWN, STATE_UNAVAILABLE}:
+    if isinstance(value, str) and value.lower() in {
+        "none",
+        STATE_UNKNOWN,
+        STATE_UNAVAILABLE,
+    }:
         return None
     try:
         return float(value)
@@ -245,7 +249,9 @@ class EnergyDeviceBridgePowerSensor(EnergyDeviceBridgeSensorBase):
             return
         try:
             self._native_value = float(
-                PowerConverter.convert(source_numeric, source_unit, UnitOfPower.KILO_WATT)
+                PowerConverter.convert(
+                    source_numeric, source_unit, UnitOfPower.KILO_WATT
+                )
             )
         except (TypeError, ValueError):
             self._native_value = None
@@ -362,7 +368,8 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         self._entry.runtime_data.set_issue(
             self.hass,
             ISSUE_ENERGY_STATE_CLASS_INVALID,
-            is_active=state_class not in (
+            is_active=state_class
+            not in (
                 SensorStateClass.TOTAL,
                 SensorStateClass.TOTAL_INCREASING,
                 None,
@@ -401,7 +408,9 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             and result.previous_kwh is not None
             and result.new_kwh is not None
         ):
-            self._create_lower_non_zero_notification(result.previous_kwh, result.new_kwh)
+            self._create_lower_non_zero_notification(
+                result.previous_kwh, result.new_kwh
+            )
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
         self._schedule_save()
 
@@ -419,13 +428,17 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
 
         source_numeric = _parse_numeric(source_state.state)
         if source_numeric is None:
-            raise HomeAssistantError("Configured source energy sensor state is not numeric")
+            raise HomeAssistantError(
+                "Configured source energy sensor state is not numeric"
+            )
 
         source_kwh = _convert_energy_to_kwh(
             source_numeric, source_state.attributes.get("unit_of_measurement")
         )
         if source_kwh is None:
-            raise HomeAssistantError("Configured source energy sensor unit is unsupported")
+            raise HomeAssistantError(
+                "Configured source energy sensor unit is unsupported"
+            )
         return source_kwh
 
     @property
@@ -448,7 +461,9 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         """Build deterministic persistent-notification id for this entry."""
         return f"{DOMAIN}_{self._entry.entry_id}_lower_non_zero"
 
-    def _create_lower_non_zero_notification(self, previous_kwh: float, new_kwh: float) -> None:
+    def _create_lower_non_zero_notification(
+        self, previous_kwh: float, new_kwh: float
+    ) -> None:
         """Create/update a persistent notification for lower non-zero readings."""
         now = dt_util.utcnow().isoformat()
         persistent_notification.async_create(
@@ -519,7 +534,9 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
     def _is_waiting_for_initial_history_import(self) -> bool:
         return bool(
             self._entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE, True)
-            and self._entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)
+            and self._entry.options.get(
+                CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False
+            )
             and not self._tracker.history_import_has_run
         )
 

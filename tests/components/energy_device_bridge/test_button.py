@@ -18,7 +18,9 @@ from custom_components.energy_device_bridge.const import (
 
 
 @pytest.mark.asyncio
-async def test_button_entities_are_created_with_translation_names(hass: HomeAssistant) -> None:
+async def test_button_entities_are_created_with_translation_names(
+    hass: HomeAssistant,
+) -> None:
     """Button entities are available and use translation-backed names."""
     hass.states.async_set(
         "sensor.src_energy",
