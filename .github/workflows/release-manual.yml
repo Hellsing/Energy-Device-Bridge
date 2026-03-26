@@ -1,0 +1,57 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Release mode"
+        required: true
+        type: choice
+        options:
+          - prepare
+          - publish
+        default: prepare
+      release_as:
+        description: "Version to release (e.g. 1.2.3)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-manual
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version input
+        run: |
+          if [ -z "${{ inputs.release_as }}" ]; then
+            echo "release_as is required for this repository's manual release flow."
+            echo "Provide a plain SemVer value, for example: 1.2.3"
+            exit 1
+          fi
+
+      # Uses the built-in GITHUB_TOKEN by default; switch to a PAT or GitHub App token secret later if CI must run on Release Please PRs.
+      - name: Prepare release PR
+        if: ${{ inputs.mode == 'prepare' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
+          release-as: ${{ inputs.release_as }}
+
+      - name: Publish release/tag
+        if: ${{ inputs.mode == 'publish' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+          release-as: ${{ inputs.release_as }}
