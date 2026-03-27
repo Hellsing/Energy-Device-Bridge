@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5 - 2026-03-27
+
+- Tolerate missing state_class; fix import & options (4007826)
+- Improved statistics clearing before reinitialization (519685c)
+
 ## 1.0.4 - 2026-03-27
 
 - Fixed import issue (420c4ed)
