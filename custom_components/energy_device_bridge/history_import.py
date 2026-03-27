@@ -98,13 +98,19 @@ def _async_import_short_term_statistics(
         return False
     try:
         from homeassistant.components.recorder import get_instance
-    except Exception:  # noqa: BLE001 - import safety across HA versions
+
+        instance = get_instance(hass)
+        import_fn = getattr(instance, "async_import_statistics", None)
+        if import_fn is None:
+            return False
+        import_fn(metadata, statistics, table)
+    except Exception:  # noqa: BLE001 - best-effort short-term import
+        _LOGGER.debug(
+            "Unable to import short-term statistics for %s",
+            metadata.get("statistic_id"),
+            exc_info=True,
+        )
         return False
-    instance = get_instance(hass)
-    import_fn = getattr(instance, "async_import_statistics", None)
-    if import_fn is None:
-        return False
-    import_fn(metadata, statistics, table)
     return True
 
 
