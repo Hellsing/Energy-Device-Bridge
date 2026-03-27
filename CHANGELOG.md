@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.7 - 2026-03-27
+
+- Fixed tests timeouts (9ef4795)
+- Add structured notification builders for history import (06b35ca)
+- Prevent overwriting pending_data; update tests (4918592)
+- Block live updates during history imports (473b450)
+
 ## 1.0.6 - 2026-03-27
 
 - Fixed broken test (37d8120)
