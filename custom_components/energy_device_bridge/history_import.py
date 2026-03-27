@@ -336,6 +336,19 @@ def _build_notification_id(entry_id: str) -> str:
     return f"{DOMAIN}_{entry_id}_history_import"
 
 
+def _clear_create_pending_option(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear create-time import pending flag once import reached a terminal state."""
+    if not bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)):
+        return
+    hass.config_entries.async_update_entry(
+        entry,
+        options={
+            **entry.options,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: False,
+        },
+    )
+
+
 def _build_stats_rows(
     states: Iterable[State],
     tracker: EnergyTrackerState,
@@ -517,28 +530,9 @@ async def _async_run_import(
     *,
     reinitialize_before_import: bool = False,
 ) -> None:
-    tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
-    bridge_entity_id = _bridge_energy_entity_id(hass, entry)
     source_entity_id = entry.runtime_data.consumer.source_energy_entity_id
-
-    tracker.history_import_in_progress = True
-    tracker.history_import_last_started_at = dt_util.utcnow().isoformat()
-    tracker.history_import_last_error = None
-    await entry.runtime_data.store.async_save(tracker)
-
-    if bridge_entity_id is None:
-        tracker.history_import_in_progress = False
-        tracker.history_import_last_result = "failed"
-        tracker.history_import_last_error = "Bridge energy entity is unavailable"
-        tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
-        await entry.runtime_data.store.async_save(tracker)
-        persistent_notification.async_create(
-            hass,
-            "Historical import failed: bridge energy entity is unavailable.",
-            title="Energy Device Bridge history import failed",
-            notification_id=_build_notification_id(entry.entry_id),
-        )
-        return
+    bridge_entity_id: str | None = None
+    tracker = EnergyTrackerState()
 
     async def _async_purge_bridge_entity_history(entity_id: str) -> None:
         try:
@@ -556,6 +550,29 @@ async def _async_run_import(
             )
 
     try:
+        tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
+        bridge_entity_id = _bridge_energy_entity_id(hass, entry)
+
+        tracker.history_import_in_progress = True
+        tracker.history_import_last_started_at = dt_util.utcnow().isoformat()
+        tracker.history_import_last_error = None
+        await entry.runtime_data.store.async_save(tracker)
+
+        if bridge_entity_id is None:
+            tracker.history_import_in_progress = False
+            tracker.history_import_last_result = "failed"
+            tracker.history_import_last_error = "Bridge energy entity is unavailable"
+            tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
+            await entry.runtime_data.store.async_save(tracker)
+            _clear_create_pending_option(hass, entry)
+            persistent_notification.async_create(
+                hass,
+                "Historical import failed: bridge energy entity is unavailable.",
+                title="Energy Device Bridge history import failed",
+                notification_id=_build_notification_id(entry.entry_id),
+            )
+            return
+
         if reinitialize_before_import:
             energy_sensor = entry.runtime_data.energy_sensor
             if energy_sensor is not None:
@@ -717,17 +734,6 @@ async def _async_run_import(
                 tracker.last_valid_source_sample_ts = now_iso
                 tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
 
-            if bool(
-                entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)
-            ):
-                hass.config_entries.async_update_entry(
-                    entry,
-                    options={
-                        **entry.options,
-                        CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: False,
-                    },
-                )
-
         tracker.history_import_in_progress = False
         tracker.history_import_has_run = True
         tracker.history_import_last_result = "success"
@@ -748,6 +754,7 @@ async def _async_run_import(
             else tracker.history_import_last_imported_hour_start
         )
         await entry.runtime_data.store.async_save(tracker)
+        _clear_create_pending_option(hass, entry)
         if entry.runtime_data.energy_sensor is not None:
             await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(
                 tracker
@@ -770,12 +777,21 @@ async def _async_run_import(
             title="Energy Device Bridge history import completed",
             notification_id=_build_notification_id(entry.entry_id),
         )
+    except asyncio.CancelledError:
+        tracker.history_import_in_progress = False
+        tracker.history_import_last_result = "cancelled"
+        tracker.history_import_last_error = "History import cancelled"
+        tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
+        await entry.runtime_data.store.async_save(tracker)
+        _clear_create_pending_option(hass, entry)
+        raise
     except Exception as err:  # noqa: BLE001 - user-facing failure path
         tracker.history_import_in_progress = False
         tracker.history_import_last_result = "failed"
         tracker.history_import_last_error = str(err)
         tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
         await entry.runtime_data.store.async_save(tracker)
+        _clear_create_pending_option(hass, entry)
         persistent_notification.async_create(
             hass,
             (

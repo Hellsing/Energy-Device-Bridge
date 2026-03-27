@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
@@ -511,6 +512,156 @@ async def test_successful_import_clears_creation_pending_flag(
         assert (
             entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
         )
+
+
+@pytest.mark.asyncio
+async def test_successful_import_with_no_rows_clears_creation_pending_flag(
+    hass: HomeAssistant,
+) -> None:
+    """Empty import windows still clear pending create-time import state."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-empty-window",
+            CONF_CONSUMER_NAME: "Import Empty Window",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": []},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+
+
+@pytest.mark.asyncio
+async def test_failed_import_clears_creation_pending_flag(
+    hass: HomeAssistant,
+) -> None:
+    """Failed imports clear pending create-time import to avoid stuck unavailable."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-fail-clears-pending",
+            CONF_CONSUMER_NAME: "Import Fail Clears Pending",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with patch(
+        "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+        side_effect=RuntimeError("boom"),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    tracker = await entry.runtime_data.store.async_load()
+    assert tracker is not None
+    assert tracker.history_import_last_result == "failed"
+    assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+
+
+@pytest.mark.asyncio
+async def test_cancelled_import_clears_creation_pending_flag(
+    hass: HomeAssistant,
+) -> None:
+    """Cancelled imports clear pending create-time import and tracker in-progress flag."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-cancel-clears-pending",
+            CONF_CONSUMER_NAME: "Import Cancel Clears Pending",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.energy_device_bridge.async_schedule_copy_on_create",
+        new=AsyncMock(),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    load_gate = asyncio.Event()
+
+    async def _blocked_load():
+        await load_gate.wait()
+        return EnergyTrackerState()
+
+    with patch.object(entry.runtime_data.store, "async_load", side_effect=_blocked_load):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        task = entry.runtime_data.history_import_task
+        assert task is not None
+        await asyncio.sleep(0)
+        task.cancel()
+        load_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await hass.async_block_till_done()
+
+    tracker = await entry.runtime_data.store.async_load()
+    assert tracker is not None
+    assert tracker.history_import_in_progress is False
+    assert tracker.history_import_last_result == "cancelled"
+    assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
 
 
 @pytest.mark.asyncio
