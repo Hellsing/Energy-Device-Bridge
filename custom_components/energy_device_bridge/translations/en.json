@@ -157,6 +157,10 @@
           "description": "Target Energy Device Bridge config entry ID."
         }
       }
+    },
+    "cleanup_recorder_data": {
+      "name": "Cleanup recorder data",
+      "description": "Purge recorder history/events and clear statistics for selected entities."
     }
   }
 }

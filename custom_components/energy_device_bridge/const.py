@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Final
 
+from homeassistant.const import Platform
+
 DOMAIN: Final = "energy_device_bridge"
 
-PLATFORMS: Final = ["sensor", "button"]
+PLATFORMS: Final = [Platform.SENSOR, Platform.BUTTON]
 
 CONF_CONSUMER_UUID: Final = "consumer_uuid"
 CONF_CONSUMER_NAME: Final = "consumer_name"

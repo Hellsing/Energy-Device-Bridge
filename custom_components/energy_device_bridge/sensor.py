@@ -195,11 +195,6 @@ class EnergyDeviceBridgePowerSensor(EnergyDeviceBridgeSensorBase):
         """Return mirrored source value."""
         return self._native_value
 
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return canonical power unit."""
-        return UnitOfPower.KILO_WATT
-
     async def async_added_to_hass(self) -> None:
         """Handle entity addition."""
         self._refresh_from_source()

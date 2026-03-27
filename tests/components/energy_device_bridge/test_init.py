@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
@@ -298,3 +299,44 @@ async def test_delete_device_rejects_unrelated_device(hass) -> None:
         identifiers={("test_domain", "test-device")},
     )
     assert not await async_remove_config_entry_device(hass, entry, device)
+
+
+@pytest.mark.asyncio
+async def test_unload_cancels_pending_copy_on_create_task(hass) -> None:
+    """Config entry unload cancels any in-flight create-time copy task."""
+    hass.states.async_set(
+        "sensor.energy_source",
+        10,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-copy-task-cancel",
+            CONF_CONSUMER_NAME: "Copy Task Cancel",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.energy_source",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    release_gate = asyncio.Event()
+
+    async def _blocked_copy(_hass, _entry) -> None:
+        await release_gate.wait()
+
+    with patch(
+        "custom_components.energy_device_bridge.async_schedule_copy_on_create",
+        side_effect=_blocked_copy,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        copy_task = entry.runtime_data.copy_on_create_task
+        assert copy_task is not None
+        assert not copy_task.done()
+
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+
+    release_gate.set()
+    await hass.async_block_till_done()
+    assert entry.runtime_data.copy_on_create_task is None

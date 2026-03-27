@@ -73,6 +73,7 @@ Services exposed by the integration:
 - `energy_device_bridge.reset_tracker` (targets bridge energy sensor entities)
 - `energy_device_bridge.set_virtual_total` (targets bridge energy sensor entities, requires `value_kwh`)
 - `energy_device_bridge.import_source_history` (requires `config_entry_id`)
+- `energy_device_bridge.cleanup_recorder_data` (targets entities to fully remove recorder history/statistics)
 
 ## Behavior
 

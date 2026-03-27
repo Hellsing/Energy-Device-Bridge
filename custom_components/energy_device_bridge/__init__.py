@@ -53,6 +53,7 @@ class EnergyDeviceBridgeRuntimeData:
     energy_sensor: EnergyDeviceBridgeEnergySensor | None = None
     active_issue_ids: set[str] = field(default_factory=set)
     history_import_task: asyncio.Task[None] | None = None
+    copy_on_create_task: asyncio.Task[None] | None = None
 
     def _issue_id(self, issue_key: str) -> str:
         return f"{self.consumer.consumer_uuid}_{issue_key}"
@@ -217,7 +218,17 @@ async def async_setup_entry(
         device_info=device_info,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    hass.async_create_task(async_schedule_copy_on_create(hass, entry))
+    copy_task = hass.async_create_task(async_schedule_copy_on_create(hass, entry))
+    entry.runtime_data.copy_on_create_task = copy_task
+
+    def _clear_copy_task(task: asyncio.Task[None]) -> None:
+        runtime_data = getattr(entry, "runtime_data", None)
+        if runtime_data is None:
+            return
+        if runtime_data.copy_on_create_task is task:
+            runtime_data.copy_on_create_task = None
+
+    copy_task.add_done_callback(_clear_copy_task)
     return True
 
 
@@ -308,14 +319,7 @@ async def async_unload_entry(
 ) -> bool:
     """Unload a config entry."""
     runtime_data = entry.runtime_data
-    if (
-        runtime_data.history_import_task is not None
-        and not runtime_data.history_import_task.done()
-    ):
-        runtime_data.history_import_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await runtime_data.history_import_task
-        runtime_data.history_import_task = None
+    await _async_cancel_runtime_tasks(runtime_data)
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         runtime_data.dismiss_all_issues(hass)
@@ -326,11 +330,25 @@ async def async_remove_entry(
     hass: HomeAssistant, entry: EnergyDeviceBridgeConfigEntry
 ) -> None:
     """Remove config entry and persisted metadata/history for owned entities."""
-    await _async_cleanup_recorder_for_entry(hass, entry)
     runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is not None:
+        await _async_cancel_runtime_tasks(runtime_data)
+    await _async_cleanup_recorder_for_entry(hass, entry)
     if runtime_data is not None:
         runtime_data.dismiss_all_issues(hass)
     await EnergyDeviceBridgeStore(hass, entry.entry_id).async_remove()
+
+
+async def _async_cancel_runtime_tasks(runtime_data: EnergyDeviceBridgeRuntimeData) -> None:
+    """Cancel and await entry-scoped background tasks."""
+    for task_attr in ("copy_on_create_task", "history_import_task"):
+        task = getattr(runtime_data, task_attr)
+        if task is None or task.done():
+            continue
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        setattr(runtime_data, task_attr, None)
 
 
 def _async_entry_entity_ids(
@@ -439,4 +457,5 @@ async def async_remove_config_entry_device(
         return False
     if not any(identifier[0] == DOMAIN for identifier in device_entry.identifiers):
         return False
-    return await hass.config_entries.async_remove(config_entry.entry_id)
+    await hass.config_entries.async_remove(config_entry.entry_id)
+    return True
