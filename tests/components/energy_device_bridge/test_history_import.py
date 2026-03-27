@@ -1571,7 +1571,9 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
                     0.02,
                     {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
                 )
-                await hass.async_block_till_done()
+                # Do not wait for all tasks here: import task is intentionally blocked.
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
                 assert live_apply_mock.call_count == 0
 
             energy_state = hass.states.get(energy_entity_id)
