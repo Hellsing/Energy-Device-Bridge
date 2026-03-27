@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.6 - 2026-03-27
+
+- Fixed broken test (37d8120)
+- Cancel entry-scoped tasks and add cleanup service (b3bc3fe)
+- Clear create-pending option on import outcomes (7075e17)
+- Persist and use last source baseline for imports (734b96e)
+
 ## 1.0.5 - 2026-03-27
 
 - Tolerate missing state_class; fix import & options (4007826)
