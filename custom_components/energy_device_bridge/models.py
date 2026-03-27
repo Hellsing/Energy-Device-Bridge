@@ -22,6 +22,10 @@ from .const import (
     ATTR_HISTORY_IMPORT_LAST_ERROR,
     ATTR_HISTORY_IMPORT_LAST_FINISHED_AT,
     ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_UNIT,
     ATTR_HISTORY_IMPORT_LAST_RESULT,
     ATTR_HISTORY_IMPORT_LAST_STARTED_AT,
     ATTR_HISTORY_IMPORT_PERIOD_END,
@@ -77,6 +81,10 @@ class EnergyTrackerState:
     history_import_period_end: str | None = None
     history_import_last_imported_hour_start: str | None = None
     history_import_create_invoked: bool = False
+    history_import_last_source_entity_id: str | None = None
+    history_import_last_source_energy_value_kwh: float | None = None
+    history_import_last_source_sample_ts: str | None = None
+    history_import_last_source_unit: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize state for storage."""
@@ -108,6 +116,16 @@ class EnergyTrackerState:
                 self.history_import_last_imported_hour_start
             ),
             ATTR_HISTORY_IMPORT_CREATE_INVOKED: self.history_import_create_invoked,
+            ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID: (
+                self.history_import_last_source_entity_id
+            ),
+            ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH: (
+                self.history_import_last_source_energy_value_kwh
+            ),
+            ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS: (
+                self.history_import_last_source_sample_ts
+            ),
+            ATTR_HISTORY_IMPORT_LAST_SOURCE_UNIT: self.history_import_last_source_unit,
         }
 
     @classmethod
@@ -168,6 +186,19 @@ class EnergyTrackerState:
             history_import_create_invoked=bool(
                 data.get(ATTR_HISTORY_IMPORT_CREATE_INVOKED, False)
             ),
+            history_import_last_source_entity_id=data.get(
+                ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID
+            ),
+            history_import_last_source_energy_value_kwh=(
+                float(data[ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH])
+                if data.get(ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH)
+                is not None
+                else None
+            ),
+            history_import_last_source_sample_ts=data.get(
+                ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS
+            ),
+            history_import_last_source_unit=data.get(ATTR_HISTORY_IMPORT_LAST_SOURCE_UNIT),
         )
 
 

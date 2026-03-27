@@ -18,6 +18,9 @@ from custom_components.energy_device_bridge.const import (
     CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID,
+    ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS,
     CONF_ZERO_DROP_POLICY,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
@@ -28,6 +31,7 @@ from custom_components.energy_device_bridge.const import (
 from custom_components.energy_device_bridge.history_import import (
     async_request_history_import,
 )
+from custom_components.energy_device_bridge.models import EnergyTrackerState
 
 
 @dataclass
@@ -808,11 +812,11 @@ async def test_incremental_import_preserves_delta_from_previous_source_baseline(
         ),
         patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
-            side_effect=[
-                {"sensor.src_energy": initial_states},
-                {"sensor.src_energy": incremental_states},
-            ],
-        ),
+            return_value={"sensor.src_energy": incremental_states},
+        ) as history_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._last_valid_source_kwh_before"
+        ) as legacy_backfill_mock,
         patch(
             "custom_components.energy_device_bridge.history_import._async_import_statistics"
         ) as import_stats_mock,
@@ -830,6 +834,206 @@ async def test_incremental_import_preserves_delta_from_previous_source_baseline(
         assert len(rows) == 1
         # 10.0 existing total + (111-110) + (112-111) == 12.0
         assert rows[0]["sum"] == pytest.approx(12.0, abs=1e-6)
+        assert legacy_backfill_mock.call_count == 0
+        assert history_mock.call_count == 1
+        assert history_mock.call_args.args[1] == dt_util.as_utc(datetime(2024, 1, 1, 11, 0))
+
+
+@pytest.mark.asyncio
+async def test_incremental_import_legacy_tracker_uses_fallback_once_and_self_heals(
+    hass: HomeAssistant,
+) -> None:
+    """Legacy trackers without persisted replay baseline recover and persist it."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        112.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-legacy-self-heal",
+            CONF_CONSUMER_NAME: "Import Legacy Self Heal",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    legacy_tracker = EnergyTrackerState(
+        virtual_total_kwh=10.0,
+        history_import_has_run=True,
+        history_import_last_imported_hour_start=dt_util.as_utc(
+            datetime(2024, 1, 1, 10, 0)
+        ).isoformat(),
+        last_source_entity_id="sensor.src_energy",
+    )
+    await entry.runtime_data.store.async_save(legacy_tracker)
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 12, 23))
+    incremental_states = [
+        _MockHistoricalState(
+            state="111.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+        ),
+        _MockHistoricalState(
+            state="112.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+        ),
+    ]
+
+    def _mock_last_statistics(
+        _hass: HomeAssistant,
+        _number_of_stats: int,
+        statistic_id: str,
+        _convert_units: bool,
+        _types: set[str],
+    ) -> dict[str, list[dict]]:
+        return {statistic_id: [{"sum": 10.0}]}
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._get_last_statistics",
+            side_effect=_mock_last_statistics,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._last_valid_source_kwh_before",
+            return_value=110.0,
+        ) as legacy_backfill_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": incremental_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        assert legacy_backfill_mock.call_count == 1
+
+    healed_tracker = await entry.runtime_data.store.async_load()
+    assert healed_tracker is not None
+    assert healed_tracker.history_import_last_source_energy_value_kwh == pytest.approx(
+        112.0, abs=1e-6
+    )
+    assert healed_tracker.history_import_last_source_entity_id == "sensor.src_energy"
+    assert healed_tracker.history_import_last_source_sample_ts is not None
+
+
+@pytest.mark.asyncio
+async def test_incremental_import_falls_back_when_persisted_baseline_source_mismatches(
+    hass: HomeAssistant,
+) -> None:
+    """Source replacement should invalidate persisted replay baseline safely."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        112.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-source-replacement",
+            CONF_CONSUMER_NAME: "Import Source Replacement",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    tracker_with_mismatched_baseline = EnergyTrackerState(
+        virtual_total_kwh=10.0,
+        history_import_has_run=True,
+        history_import_last_imported_hour_start=dt_util.as_utc(
+            datetime(2024, 1, 1, 10, 0)
+        ).isoformat(),
+        last_source_entity_id="sensor.src_energy",
+        history_import_last_source_entity_id="sensor.replaced_source",
+        history_import_last_source_energy_value_kwh=110.0,
+        history_import_last_source_sample_ts=dt_util.as_utc(
+            datetime(2024, 1, 1, 10, 10)
+        ).isoformat(),
+    )
+    await entry.runtime_data.store.async_save(tracker_with_mismatched_baseline)
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 12, 23))
+    incremental_states = [
+        _MockHistoricalState(
+            state="111.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+        ),
+        _MockHistoricalState(
+            state="112.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+        ),
+    ]
+
+    def _mock_last_statistics(
+        _hass: HomeAssistant,
+        _number_of_stats: int,
+        statistic_id: str,
+        _convert_units: bool,
+        _types: set[str],
+    ) -> dict[str, list[dict]]:
+        return {statistic_id: [{"sum": 10.0}]}
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._get_last_statistics",
+            side_effect=_mock_last_statistics,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._last_valid_source_kwh_before",
+            return_value=110.0,
+        ) as legacy_backfill_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": incremental_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        assert legacy_backfill_mock.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -1019,3 +1223,10 @@ async def test_manual_import_reinitializes_tracker_and_purges_recorder_data(
 
     assert prepare_mock.await_count == 1
     assert clear_stats_mock.await_count >= 1
+    tracker = await entry.runtime_data.store.async_load()
+    assert tracker is not None
+    assert tracker.as_dict()[ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID] == "sensor.src_energy"
+    assert tracker.as_dict()[
+        ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH
+    ] == pytest.approx(12.0, abs=1e-6)
+    assert tracker.as_dict()[ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS] is not None

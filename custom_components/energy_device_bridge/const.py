@@ -62,6 +62,12 @@ ATTR_HISTORY_IMPORT_LAST_IMPORTED_HOUR_START: Final = (
     "history_import_last_imported_hour_start"
 )
 ATTR_HISTORY_IMPORT_CREATE_INVOKED: Final = "history_import_create_invoked"
+ATTR_HISTORY_IMPORT_LAST_SOURCE_ENTITY_ID: Final = "history_import_last_source_entity_id"
+ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH: Final = (
+    "history_import_last_source_energy_value_kwh"
+)
+ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS: Final = "history_import_last_source_sample_ts"
+ATTR_HISTORY_IMPORT_LAST_SOURCE_UNIT: Final = "history_import_last_source_unit"
 
 ATTR_VALUE_KWH: Final = "value_kwh"
 

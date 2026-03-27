@@ -159,6 +159,59 @@ def _last_valid_source_kwh_before(
     return None
 
 
+def _seed_replay_baseline_from_persisted_tracker(
+    *,
+    tracker: EnergyTrackerState,
+    replay_tracker: EnergyTrackerState,
+    source_entity_id: str,
+    import_start_hour: datetime,
+) -> bool:
+    """Seed replay baseline from persisted import state when compatible."""
+    persisted_value = tracker.history_import_last_source_energy_value_kwh
+    if persisted_value is None:
+        return False
+    if tracker.history_import_last_source_entity_id != source_entity_id:
+        return False
+    if tracker.history_import_last_source_unit != UnitOfEnergy.KILO_WATT_HOUR:
+        return False
+    if not tracker.history_import_last_source_sample_ts:
+        return False
+    sample_dt = dt_util.parse_datetime(tracker.history_import_last_source_sample_ts)
+    if sample_dt is None:
+        return False
+    if dt_util.as_utc(sample_dt) >= import_start_hour:
+        return False
+
+    replay_tracker.last_source_entity_id = source_entity_id
+    replay_tracker.last_source_energy_value_kwh = float(persisted_value)
+    replay_tracker.last_valid_source_sample_ts = tracker.history_import_last_source_sample_ts
+    replay_tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+    return True
+
+
+async def _async_seed_replay_baseline_with_legacy_backfill(
+    hass: HomeAssistant,
+    *,
+    replay_tracker: EnergyTrackerState,
+    source_entity_id: str,
+    import_start_hour: datetime,
+) -> None:
+    """Legacy/recovery baseline backfill for pre-optimization tracker state."""
+    last_source_before_window = await hass.async_add_executor_job(
+        partial(
+            _last_valid_source_kwh_before,
+            hass,
+            source_entity_id=source_entity_id,
+            before_time=import_start_hour,
+        )
+    )
+    if last_source_before_window is None:
+        return
+    replay_tracker.last_source_entity_id = source_entity_id
+    replay_tracker.last_source_energy_value_kwh = last_source_before_window
+    replay_tracker.current_normalized_source_unit = UnitOfEnergy.KILO_WATT_HOUR
+
+
 def _supports_statistics_metadata_field(field_name: str) -> bool:
     """Return whether recorder metadata model supports a field."""
     try:
@@ -556,20 +609,23 @@ async def _async_run_import(
                     )
                     import_start_hour = last_row_start + timedelta(hours=1)
 
-            if tracker.last_source_entity_id == source_entity_id:
-                last_source_before_window = await hass.async_add_executor_job(
-                    partial(
-                        _last_valid_source_kwh_before,
-                        hass,
+            seeded_from_persisted_baseline = False
+            if import_start_hour > _EPOCH_UTC:
+                seeded_from_persisted_baseline = (
+                    _seed_replay_baseline_from_persisted_tracker(
+                        tracker=tracker,
+                        replay_tracker=replay_tracker,
                         source_entity_id=source_entity_id,
-                        before_time=import_start_hour,
+                        import_start_hour=import_start_hour,
                     )
                 )
-                if last_source_before_window is not None:
-                    replay_tracker.last_source_entity_id = source_entity_id
-                    replay_tracker.last_source_energy_value_kwh = (
-                        last_source_before_window
-                    )
+            if import_start_hour > _EPOCH_UTC and not seeded_from_persisted_baseline:
+                await _async_seed_replay_baseline_with_legacy_backfill(
+                    hass,
+                    replay_tracker=replay_tracker,
+                    source_entity_id=source_entity_id,
+                    import_start_hour=import_start_hour,
+                )
         elif not reinitialize_before_import:
             await _async_clear_statistics_and_wait(hass, bridge_entity_id)
 
@@ -626,6 +682,19 @@ async def _async_run_import(
 
         if stats_rows or short_term_rows or sample_count:
             tracker.virtual_total_kwh = replay_tracker.virtual_total_kwh
+            if (
+                sample_count
+                and replay_tracker.last_source_entity_id == source_entity_id
+                and replay_tracker.last_source_energy_value_kwh is not None
+            ):
+                tracker.history_import_last_source_entity_id = source_entity_id
+                tracker.history_import_last_source_energy_value_kwh = (
+                    replay_tracker.last_source_energy_value_kwh
+                )
+                tracker.history_import_last_source_sample_ts = (
+                    replay_tracker.last_valid_source_sample_ts
+                )
+                tracker.history_import_last_source_unit = UnitOfEnergy.KILO_WATT_HOUR
             source_state = hass.states.get(source_entity_id)
             source_kwh: float | None = None
             if source_state is not None:

@@ -24,3 +24,7 @@ def test_energy_tracker_state_from_legacy_data_defaults_new_fields() -> None:
     assert restored.awaiting_non_zero_after_zero_drop is False
     assert restored.zero_drop_count == 0
     assert restored.lower_value_count == 0
+    assert restored.history_import_last_source_entity_id is None
+    assert restored.history_import_last_source_energy_value_kwh is None
+    assert restored.history_import_last_source_sample_ts is None
+    assert restored.history_import_last_source_unit is None
