@@ -131,6 +131,25 @@ def _resolve_entry_by_id(
     return entry
 
 
+async def async_start_history_import(
+    hass: HomeAssistant,
+    *,
+    entry: EnergyDeviceBridgeConfigEntry,
+    trigger: str,
+    reinitialize_before_import: bool = False,
+) -> None:
+    """Start one history-import request via the shared internal entrypoint."""
+    accepted = await async_request_history_import(
+        hass,
+        entry=entry,
+        trigger=trigger,
+        reject_if_running=True,
+        reinitialize_before_import=reinitialize_before_import,
+    )
+    if not accepted:
+        _raise_service_validation_error("history_import_in_progress")
+
+
 def _resolve_energy_sensors_from_entity_ids(
     hass: HomeAssistant,
     entity_ids: list[str],
@@ -229,14 +248,12 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 
     async def _handle_import_service(call: ServiceCall) -> None:
         entry = _resolve_entry_by_id(hass, call.data["config_entry_id"])
-        accepted = await async_request_history_import(
+        await async_start_history_import(
             hass,
             entry=entry,
             trigger="service",
-            reject_if_running=True,
+            reinitialize_before_import=False,
         )
-        if not accepted:
-            _raise_service_validation_error("history_import_in_progress")
 
     async def _handle_cleanup_recorder_data_service(call: ServiceCall) -> None:
         entity_ids = list(call.data[ATTR_ENTITY_ID])

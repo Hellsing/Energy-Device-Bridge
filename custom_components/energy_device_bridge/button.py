@@ -7,9 +7,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import EnergyDeviceBridgeConfigEntry
+from . import EnergyDeviceBridgeConfigEntry, async_start_history_import
 from .const import DOMAIN
-from .history_import import async_request_history_import
 from .models import ConsumerConfig
 
 _ADOPT_BASELINE_DESCRIPTION = ButtonEntityDescription(
@@ -92,11 +91,11 @@ class EnergyDeviceBridgeImportSourceHistoryButton(EnergyDeviceBridgeButtonBase):
 
     async def async_press(self) -> None:
         """Handle button press."""
-        await async_request_history_import(
+        await async_start_history_import(
             self.hass,
             entry=self._entry,
             trigger="button",
-            reject_if_running=True,
+            reinitialize_before_import=True,
         )
 
 

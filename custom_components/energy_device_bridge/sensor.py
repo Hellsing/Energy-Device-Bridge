@@ -530,6 +530,14 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         self._schedule_save()
         self.async_write_ha_state()
 
+    async def async_prepare_for_manual_history_import(self) -> None:
+        """Reset tracker and make sensor unavailable before manual import."""
+        self._tracker = EnergyTrackerState()
+        self._attr_available = False
+        # Keep native value untouched while unavailable to avoid writing a new 0-state row.
+        await self._entry.runtime_data.store.async_save(self._tracker)
+        self.async_write_ha_state()
+
     @property
     def _is_waiting_for_initial_history_import(self) -> bool:
         return bool(

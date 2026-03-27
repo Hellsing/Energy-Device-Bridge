@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+import logging
 from time import monotonic
 from typing import Any
 
@@ -30,6 +31,7 @@ from .const import (
 from .models import EnergyTrackerState
 
 _EPOCH_UTC = datetime(1970, 1, 1, tzinfo=dt_util.UTC)
+_LOGGER = logging.getLogger(__name__)
 
 
 def _get_last_statistics(
@@ -74,6 +76,36 @@ def _async_import_statistics(
     from homeassistant.components.recorder.statistics import async_import_statistics
 
     async_import_statistics(hass, metadata, statistics)
+
+
+def _resolve_short_term_statistics_table() -> type | None:
+    """Resolve recorder short-term statistics ORM model."""
+    try:
+        from homeassistant.components.recorder.db_schema import StatisticsShortTerm
+    except Exception:  # noqa: BLE001 - import safety across HA versions
+        return None
+    return StatisticsShortTerm
+
+
+def _async_import_short_term_statistics(
+    hass: HomeAssistant,
+    metadata: dict[str, Any],
+    statistics: list[dict[str, Any]],
+) -> bool:
+    """Import 5-minute statistics when recorder internals support it."""
+    table = _resolve_short_term_statistics_table()
+    if table is None:
+        return False
+    try:
+        from homeassistant.components.recorder import get_instance
+    except Exception:  # noqa: BLE001 - import safety across HA versions
+        return False
+    instance = get_instance(hass)
+    import_fn = getattr(instance, "async_import_statistics", None)
+    if import_fn is None:
+        return False
+    import_fn(metadata, statistics, table)
+    return True
 
 
 def _async_clear_statistics(hass: HomeAssistant, statistic_ids: list[str]) -> None:
@@ -198,8 +230,16 @@ def _build_stats_rows(
     zero_drop_policy: str,
     import_start_hour: datetime,
     import_end_exclusive_hour: datetime,
-) -> tuple[list[dict[str, Any]], int, datetime | None, datetime | None]:
+    import_end_exclusive_short_term: datetime,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    int,
+    datetime | None,
+    datetime | None,
+]:
     hours: dict[datetime, float] = {}
+    short_term: dict[datetime, float] = {}
     sample_count = 0
     period_start: datetime | None = None
     period_end: datetime | None = None
@@ -234,6 +274,15 @@ def _build_stats_rows(
         )
 
         hour_start = sample_ts.replace(minute=0, second=0, microsecond=0)
+        virtual_total = round(tracker.virtual_total_kwh, 6)
+        short_term_start = sample_ts.replace(
+            minute=sample_ts.minute - (sample_ts.minute % 5),
+            second=0,
+            microsecond=0,
+        )
+        if import_start_hour <= short_term_start < import_end_exclusive_short_term:
+            short_term[short_term_start] = virtual_total
+
         if hour_start < import_start_hour:
             continue
         if hour_start >= import_end_exclusive_hour:
@@ -242,7 +291,7 @@ def _build_stats_rows(
             period_start = hour_start
         if period_end is None or hour_start > period_end:
             period_end = hour_start
-        hours[hour_start] = round(tracker.virtual_total_kwh, 6)
+        hours[hour_start] = virtual_total
 
         # Keep variable referenced to make intent explicit.
         _ = result
@@ -250,6 +299,10 @@ def _build_stats_rows(
     rows = [
         {"start": hour_start, "state": total, "sum": total}
         for hour_start, total in sorted(hours.items())
+    ]
+    short_term_rows = [
+        {"start": bucket_start, "state": total, "sum": total}
+        for bucket_start, total in sorted(short_term.items())
     ]
     # Keep exactly one initial zero row (if present) and drop additional
     # zero-only prefix rows before the first positive total.
@@ -267,7 +320,7 @@ def _build_stats_rows(
     else:
         period_start = None
         period_end = None
-    return rows, sample_count, period_start, period_end
+    return rows, short_term_rows, sample_count, period_start, period_end
 
 
 async def async_schedule_copy_on_create(
@@ -314,6 +367,7 @@ async def async_request_history_import(
     entry: ConfigEntry,
     trigger: str,
     reject_if_running: bool = True,
+    reinitialize_before_import: bool = False,
 ) -> bool:
     """Queue history import task for one entry."""
     running_task = entry.runtime_data.history_import_task
@@ -322,7 +376,14 @@ async def async_request_history_import(
             _manual_validation_error("history_import_in_progress")
         return False
 
-    task = hass.async_create_task(_async_run_import(hass, entry, trigger))
+    task = hass.async_create_task(
+        _async_run_import(
+            hass,
+            entry,
+            trigger,
+            reinitialize_before_import=reinitialize_before_import,
+        )
+    )
     entry.runtime_data.history_import_task = task
 
     def _clear_task(_task: object) -> None:
@@ -340,6 +401,8 @@ async def _async_run_import(
     hass: HomeAssistant,
     entry: ConfigEntry,
     trigger: str,
+    *,
+    reinitialize_before_import: bool = False,
 ) -> None:
     tracker = await entry.runtime_data.store.async_load() or EnergyTrackerState()
     bridge_entity_id = _bridge_energy_entity_id(hass, entry)
@@ -364,12 +427,44 @@ async def _async_run_import(
         )
         return
 
+    async def _async_purge_bridge_entity_history(entity_id: str) -> None:
+        try:
+            await hass.services.async_call(
+                "recorder",
+                "purge_entities",
+                {"entity_id": [entity_id], "keep_days": 0},
+                blocking=True,
+            )
+        except Exception:  # noqa: BLE001 - recorder service may be unavailable
+            _LOGGER.debug(
+                "Recorder purge_entities unavailable for %s",
+                entity_id,
+                exc_info=True,
+            )
+
     try:
+        if reinitialize_before_import:
+            energy_sensor = entry.runtime_data.energy_sensor
+            if energy_sensor is not None:
+                await energy_sensor.async_prepare_for_manual_history_import()
+            tracker = EnergyTrackerState()
+            tracker.history_import_last_started_at = dt_util.utcnow().isoformat()
+            tracker.history_import_in_progress = True
+            await entry.runtime_data.store.async_save(tracker)
+            await _async_purge_bridge_entity_history(bridge_entity_id)
+            await _async_clear_statistics_and_wait(hass, bridge_entity_id)
+
         import_start_hour = _EPOCH_UTC
-        current_hour_start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+        now_utc = dt_util.utcnow()
+        current_hour_start = now_utc.replace(minute=0, second=0, microsecond=0)
+        current_short_term_start = now_utc.replace(
+            minute=now_utc.minute - (now_utc.minute % 5),
+            second=0,
+            microsecond=0,
+        )
         replay_tracker = EnergyTrackerState()
         retention_limited = False
-        first_import_run = not tracker.history_import_has_run
+        first_import_run = reinitialize_before_import or not tracker.history_import_has_run
 
         # First run should replay full available source history, regardless of
         # any bridge rows that were already generated by normal live operation.
@@ -400,34 +495,51 @@ async def _async_run_import(
                         latest_rows[-1]["start"]
                     )
                     import_start_hour = last_row_start + timedelta(hours=1)
-        else:
+        elif not reinitialize_before_import:
             await _async_clear_statistics_and_wait(hass, bridge_entity_id)
 
         history_data = await hass.async_add_executor_job(
             _state_changes_during_period,
             hass,
             import_start_hour,
-            current_hour_start,
+            current_short_term_start,
             source_entity_id,
         )
         source_states = history_data.get(source_entity_id, [])
         zero_drop_policy = str(
             entry.options.get(CONF_ZERO_DROP_POLICY, DEFAULT_ZERO_DROP_POLICY)
         )
-        stats_rows, sample_count, period_start, period_end = _build_stats_rows(
+        (
+            stats_rows,
+            short_term_rows,
+            sample_count,
+            period_start,
+            period_end,
+        ) = _build_stats_rows(
             source_states,
             replay_tracker,
             source_entity_id,
             zero_drop_policy,
             import_start_hour,
             current_hour_start,
+            current_short_term_start,
+        )
+        metadata = _build_statistics_metadata(
+            name=entry.title,
+            statistic_id=bridge_entity_id,
         )
         if stats_rows:
-            metadata = _build_statistics_metadata(
-                name=entry.title,
-                statistic_id=bridge_entity_id,
-            )
             _async_import_statistics(hass, metadata, stats_rows)
+        if short_term_rows:
+            imported_short_term = _async_import_short_term_statistics(
+                hass, metadata, short_term_rows
+            )
+            if not imported_short_term:
+                _LOGGER.debug(
+                    "Recorder short-term import unsupported for %s; "
+                    "5-minute continuity cannot be backfilled on this HA version",
+                    bridge_entity_id,
+                )
 
         if source_states and tracker.history_import_has_run:
             first_ts = dt_util.as_utc(
@@ -437,7 +549,7 @@ async def _async_run_import(
             )
             retention_limited = first_ts > import_start_hour
 
-        if stats_rows:
+        if stats_rows or short_term_rows or sample_count:
             tracker.virtual_total_kwh = replay_tracker.virtual_total_kwh
             source_state = hass.states.get(source_entity_id)
             source_kwh: float | None = None

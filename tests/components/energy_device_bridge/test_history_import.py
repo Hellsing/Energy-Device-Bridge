@@ -18,10 +18,12 @@ from custom_components.energy_device_bridge.const import (
     CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
+    CONF_ZERO_DROP_POLICY,
     CONF_SOURCE_ENERGY_ENTITY_ID,
     CONF_SOURCE_POWER_ENTITY_ID,
     DOMAIN,
     SERVICE_IMPORT_SOURCE_HISTORY,
+    ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 from custom_components.energy_device_bridge.history_import import (
     async_request_history_import,
@@ -103,11 +105,11 @@ async def test_button_and_service_share_import_entrypoint(hass: HomeAssistant) -
 
     with (
         patch(
-            "custom_components.energy_device_bridge.button.async_request_history_import",
+            "custom_components.energy_device_bridge.button.async_start_history_import",
             new=AsyncMock(return_value=True),
         ) as button_request_mock,
         patch(
-            "custom_components.energy_device_bridge.async_request_history_import",
+            "custom_components.energy_device_bridge.async_start_history_import",
             new=AsyncMock(return_value=True),
         ) as service_request_mock,
     ):
@@ -126,7 +128,13 @@ async def test_button_and_service_share_import_entrypoint(hass: HomeAssistant) -
         assert button_request_mock.call_count == 1
         assert service_request_mock.call_count == 1
         assert button_request_mock.call_args.kwargs["trigger"] == "button"
+        assert (
+            button_request_mock.call_args.kwargs["reinitialize_before_import"] is True
+        )
         assert service_request_mock.call_args.kwargs["trigger"] == "service"
+        assert (
+            service_request_mock.call_args.kwargs["reinitialize_before_import"] is False
+        )
 
 
 @pytest.mark.asyncio
@@ -499,3 +507,390 @@ async def test_successful_import_clears_creation_pending_flag(
         assert (
             entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
         )
+
+
+@pytest.mark.asyncio
+async def test_import_backfills_short_term_statistics_for_recent_buckets(
+    hass: HomeAssistant,
+) -> None:
+    """Import writes 5-minute rows up to the current incomplete bucket."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        102.2,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-short-term",
+            CONF_CONSUMER_NAME: "Import Short Term",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
+    source_states = [
+        _MockHistoricalState(
+            state="100.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 40)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 40)),
+        ),
+        _MockHistoricalState(
+            state="100.5",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 2)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 2)),
+        ),
+        _MockHistoricalState(
+            state="101.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 7)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 7)),
+        ),
+        _MockHistoricalState(
+            state="102.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 16)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 16)),
+        ),
+        _MockHistoricalState(
+            state="102.2",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 21)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 21)),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ) as import_hourly_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ) as import_short_mock,
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+        hourly_rows = import_hourly_mock.call_args.args[2]
+        assert len(hourly_rows) == 1
+        assert hourly_rows[0]["start"] == dt_util.as_utc(datetime(2024, 1, 1, 9, 0))
+        assert hourly_rows[0]["sum"] == 0.0
+
+        short_rows = import_short_mock.call_args.args[2]
+        assert [row["start"] for row in short_rows] == [
+            dt_util.as_utc(datetime(2024, 1, 1, 9, 40)),
+            dt_util.as_utc(datetime(2024, 1, 1, 10, 0)),
+            dt_util.as_utc(datetime(2024, 1, 1, 10, 5)),
+            dt_util.as_utc(datetime(2024, 1, 1, 10, 15)),
+        ]
+        assert short_rows[-1]["sum"] == 2.0
+        assert all(
+            row["start"] != dt_util.as_utc(datetime(2024, 1, 1, 10, 20))
+            for row in short_rows
+        )
+
+
+@pytest.mark.asyncio
+async def test_first_live_update_after_import_is_continuous_with_large_source_value(
+    hass: HomeAssistant,
+) -> None:
+    """Post-import live update continues from imported total without jump."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        15000.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-live-continuity",
+            CONF_CONSUMER_NAME: "Import Live Continuity",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
+    source_states = [
+        _MockHistoricalState(
+            state="14990.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 8, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 8, 10)),
+        ),
+        _MockHistoricalState(
+            state="14995.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+        ),
+        _MockHistoricalState(
+            state="14996.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 5)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 5)),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-import-live-continuity_energy"
+    )
+    assert energy_entity_id is not None
+
+    energy_state = hass.states.get(energy_entity_id)
+    assert energy_state is not None
+    assert float(energy_state.state) == pytest.approx(6.0, abs=1e-6)
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        15000.75,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    energy_state = hass.states.get(energy_entity_id)
+    assert energy_state is not None
+    assert float(energy_state.state) == pytest.approx(6.75, abs=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_reset_handling_remains_correct_after_import(
+    hass: HomeAssistant,
+) -> None:
+    """Reset policy behavior remains unchanged after import replay."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        210.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-reset-policy",
+            CONF_CONSUMER_NAME: "Import Reset Policy",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={
+            "copy_source_history_on_create": False,
+            CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
+    source_states = [
+        _MockHistoricalState(
+            state="200.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 8, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 8, 10)),
+        ),
+        _MockHistoricalState(
+            state="205.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-import-reset-policy_energy"
+    )
+    assert energy_entity_id is not None
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == pytest.approx(5.0, abs=1e-6)
+    assert state.attributes["awaiting_non_zero_after_zero_drop"] is True
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        0.5,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == pytest.approx(5.0, abs=1e-6)
+    assert state.attributes["awaiting_non_zero_after_zero_drop"] is False
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        0.8,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert float(state.state) == pytest.approx(5.3, abs=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_manual_import_reinitializes_tracker_and_purges_recorder_data(
+    hass: HomeAssistant,
+) -> None:
+    """Manual import path resets tracker, purges history, then imports."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        12.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-reinitialize",
+            CONF_CONSUMER_NAME: "Import Reinitialize",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
+    prepare_mock = AsyncMock()
+    energy_sensor.async_prepare_for_manual_history_import = prepare_mock  # type: ignore[method-assign]
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
+    source_states = [
+        _MockHistoricalState(
+            state="10.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+        ),
+        _MockHistoricalState(
+            state="12.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+        ),
+    ]
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ) as clear_stats_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": source_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass,
+            entry=entry,
+            trigger="button",
+            reject_if_running=True,
+            reinitialize_before_import=True,
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    assert prepare_mock.await_count == 1
+    assert clear_stats_mock.await_count >= 1
