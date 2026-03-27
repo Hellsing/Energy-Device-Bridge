@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 - 2026-03-27
+
+- Fixed import issue (420c4ed)
+- Import short-term stats and manual reinitialization (4b85739)
+
 ## 1.0.3 - 2026-03-26
 
 - Cleanup entity data on delete (ccf2dc9)
