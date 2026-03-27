@@ -162,25 +162,40 @@ def _build_statistics_metadata(
 async def _async_clear_statistics_and_wait(
     hass: HomeAssistant,
     statistic_id: str,
-    *,
-    timeout_seconds: float = 30.0,
 ) -> None:
-    """Clear statistics and wait until rows are no longer returned."""
+    """Clear statistics and synchronize with recorder task queue.
+
+    Recorder clear operations are asynchronous queue tasks. We wait for recorder
+    queue synchronization rather than enforcing a fixed timeout, then verify
+    best-effort that rows are gone. Any residual rows are logged and handled by
+    subsequent import overwrite logic.
+    """
     _async_clear_statistics(hass, [statistic_id])
-    deadline = monotonic() + timeout_seconds
-    while monotonic() < deadline:
-        latest_stats = await hass.async_add_executor_job(
-            _get_last_statistics,
-            hass,
-            1,
+    try:
+        from homeassistant.components.recorder import get_instance
+
+        await get_instance(hass).async_block_till_done()
+    except Exception:  # noqa: BLE001 - recorder may be unavailable during startup
+        _LOGGER.debug(
+            "Unable to synchronize recorder queue after statistics clear for %s",
             statistic_id,
-            False,
-            {"sum"},
+            exc_info=True,
         )
-        if not latest_stats.get(statistic_id):
-            return
-        await asyncio.sleep(0.25)
-    raise RuntimeError("Timed out waiting for recorder statistics clear operation")
+        return
+
+    latest_stats = await hass.async_add_executor_job(
+        _get_last_statistics,
+        hass,
+        1,
+        statistic_id,
+        False,
+        {"sum"},
+    )
+    if latest_stats.get(statistic_id):
+        _LOGGER.debug(
+            "Statistics clear verification still returned rows for %s",
+            statistic_id,
+        )
 
 
 def _parse_numeric(value: Any) -> float | None:
