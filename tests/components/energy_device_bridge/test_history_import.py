@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import threading
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import STATE_UNAVAILABLE
@@ -1436,6 +1435,8 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
         "sensor", DOMAIN, "consumer-import-block-live_energy"
     )
     assert energy_entity_id is not None
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
 
     now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
     source_states = [
@@ -1452,6 +1453,13 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
             last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
         ),
     ]
+    import_gate = asyncio.Event()
+    original_prepare = energy_sensor.async_prepare_for_manual_history_import
+
+    async def _blocked_prepare() -> None:
+        await original_prepare()
+        await import_gate.wait()
+
     with (
         patch(
             "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
@@ -1468,17 +1476,15 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
             "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
             return_value=True,
         ),
+        patch.object(
+            energy_sensor,
+            "async_prepare_for_manual_history_import",
+            side_effect=_blocked_prepare,
+        ),
     ):
-        # Block import during history read to simulate long-running reinitialize import.
-        read_gate = threading.Event()
-
-        def _waited_state_changes(*_args, **_kwargs):
-            read_gate.wait(timeout=5)
-            return {"sensor.src_energy": source_states}
-
         with patch(
             "custom_components.energy_device_bridge.history_import._state_changes_during_period",
-            side_effect=_waited_state_changes,
+            side_effect=lambda *_args, **_kwargs: {"sensor.src_energy": source_states},
         ):
             accepted = await async_request_history_import(
                 hass,
@@ -1494,8 +1500,6 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
             energy_state = hass.states.get(energy_entity_id)
             assert energy_state is not None
             assert energy_state.state == STATE_UNAVAILABLE
-            energy_sensor = entry.runtime_data.energy_sensor
-            assert energy_sensor is not None
             assert energy_sensor._tracker.history_import_in_progress is True
             assert energy_sensor._tracker.virtual_total_kwh == 0.0
 
@@ -1520,7 +1524,7 @@ async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
             assert energy_state.state == STATE_UNAVAILABLE
             assert energy_sensor._tracker.virtual_total_kwh == 0.0
 
-            read_gate.set()
+            import_gate.set()
             await hass.async_block_till_done()
 
     final_state = hass.states.get(energy_entity_id)

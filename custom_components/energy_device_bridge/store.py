@@ -54,7 +54,7 @@ class EnergyDeviceBridgeStore:
         self, state: EnergyTrackerState | None = None
     ) -> None:
         """Flush latest known state immediately."""
-        if state is not None:
+        if state is not None and self._pending_data is None:
             self._pending_data = state.as_dict()
         if self._pending_data is None:
             return

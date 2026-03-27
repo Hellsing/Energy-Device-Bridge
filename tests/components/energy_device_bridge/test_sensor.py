@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import (
     STATE_UNAVAILABLE,
@@ -458,7 +458,11 @@ async def test_energy_sensor_unavailable_while_initial_history_import_pending(
         },
     )
     entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(entry.entry_id)
+    with patch(
+        "custom_components.energy_device_bridge.async_schedule_copy_on_create",
+        new=AsyncMock(),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     entity_registry = er.async_get(hass)
