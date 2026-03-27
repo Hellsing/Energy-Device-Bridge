@@ -783,6 +783,10 @@ async def _async_run_import(
         tracker.history_import_last_error = "History import cancelled"
         tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
         await entry.runtime_data.store.async_save(tracker)
+        if entry.runtime_data.energy_sensor is not None:
+            await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(
+                tracker
+            )
         _clear_create_pending_option(hass, entry)
         raise
     except Exception as err:  # noqa: BLE001 - user-facing failure path
@@ -791,6 +795,10 @@ async def _async_run_import(
         tracker.history_import_last_error = str(err)
         tracker.history_import_last_finished_at = dt_util.utcnow().isoformat()
         await entry.runtime_data.store.async_save(tracker)
+        if entry.runtime_data.energy_sensor is not None:
+            await entry.runtime_data.energy_sensor.async_apply_import_tracker_state(
+                tracker
+            )
         _clear_create_pending_option(hass, entry)
         persistent_notification.async_create(
             hass,

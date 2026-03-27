@@ -13,6 +13,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -49,6 +50,7 @@ from custom_components.energy_device_bridge.const import (
     ZERO_DROP_POLICY_ACCEPT_ZERO_AS_NEW_CYCLE,
     ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
+from custom_components.energy_device_bridge.models import EnergyTrackerState
 
 pytestmark = pytest.mark.asyncio
 
@@ -467,6 +469,68 @@ async def test_energy_sensor_unavailable_while_initial_history_import_pending(
     energy_state = hass.states.get(energy_entity_id)
     assert energy_state is not None
     assert energy_state.state == STATE_UNAVAILABLE
+
+
+async def test_energy_sensor_blocks_live_updates_when_persisted_import_in_progress(
+    hass: HomeAssistant,
+) -> None:
+    """Persisted import-in-progress state blocks startup and live tracking."""
+    entry = await _setup_entry(hass)
+    _, energy_entity_id = _entity_ids(hass)
+
+    in_progress_tracker = EnergyTrackerState(
+        virtual_total_kwh=4.5,
+        history_import_in_progress=True,
+    )
+    await entry.runtime_data.store.async_save(in_progress_tracker)
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    energy_state = hass.states.get(energy_entity_id)
+    assert energy_state is not None
+    assert energy_state.state == STATE_UNAVAILABLE
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
+    assert energy_sensor._tracker.history_import_in_progress is True
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        11,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    blocked_state = hass.states.get(energy_entity_id)
+    assert blocked_state is not None
+    assert blocked_state.state == STATE_UNAVAILABLE
+    assert energy_sensor._tracker.virtual_total_kwh == pytest.approx(4.5, abs=1e-6)
+
+    final_tracker = EnergyTrackerState(
+        virtual_total_kwh=7.0,
+        history_import_in_progress=False,
+        history_import_has_run=True,
+        last_source_entity_id="sensor.src_energy",
+        last_source_energy_value_kwh=11.0,
+        last_valid_source_sample_ts=dt_util.utcnow().isoformat(),
+        current_normalized_source_unit=UnitOfEnergy.KILO_WATT_HOUR,
+    )
+    await energy_sensor.async_apply_import_tracker_state(final_tracker)
+    await hass.async_block_till_done()
+
+    unblocked_state = hass.states.get(energy_entity_id)
+    assert unblocked_state is not None
+    assert unblocked_state.state != STATE_UNAVAILABLE
+    assert float(unblocked_state.state) == pytest.approx(7.0, abs=1e-6)
+
+    hass.states.async_set(
+        "sensor.src_energy",
+        11.25,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    await hass.async_block_till_done()
+    post_import_state = hass.states.get(energy_entity_id)
+    assert post_import_state is not None
+    assert float(post_import_state.state) == pytest.approx(7.25, abs=1e-6)
 
 
 async def test_adopt_current_source_as_baseline_does_not_change_virtual_total(

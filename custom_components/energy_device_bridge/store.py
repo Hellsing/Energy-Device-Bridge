@@ -31,7 +31,9 @@ class EnergyDeviceBridgeStore:
 
     async def async_save(self, state: EnergyTrackerState) -> None:
         """Save tracker state."""
-        await self._store.async_save(state.as_dict())
+        data = state.as_dict()
+        self._pending_data = data
+        await self._store.async_save(data)
 
     def async_schedule_save(
         self,

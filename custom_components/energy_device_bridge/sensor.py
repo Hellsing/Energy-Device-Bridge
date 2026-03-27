@@ -320,8 +320,8 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
             [self._source_entity_id],
             self._async_handle_source_change,
         )
-        # For creation-time backfill, keep sensor unavailable until initial import finishes.
-        if self._is_waiting_for_initial_history_import:
+        # Keep sensor unavailable while any history import is expected/in progress.
+        if self._is_blocked_by_history_import:
             self._attr_available = False
             self.async_write_ha_state()
             return
@@ -347,7 +347,7 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
     @callback
     def _async_process_source_state(self) -> None:
         """Apply required non-decreasing accumulation algorithm."""
-        if self._is_waiting_for_initial_history_import:
+        if self._is_blocked_by_history_import:
             self._attr_available = False
             return
         source_state = self.hass.states.get(self._source_entity_id)
@@ -538,17 +538,28 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
         """Replace runtime tracker state after history import."""
         self._tracker = EnergyTrackerState.from_dict(state.as_dict())
         self._attr_native_value = round(self._tracker.virtual_total_kwh, 6)
-        self._attr_available = True
+        self._attr_available = not self._tracker.history_import_in_progress
         self._schedule_save()
         self.async_write_ha_state()
 
     async def async_prepare_for_manual_history_import(self) -> None:
         """Reset tracker and make sensor unavailable before manual import."""
         self._tracker = EnergyTrackerState()
+        self._tracker.history_import_in_progress = True
+        self._tracker.history_import_last_started_at = dt_util.utcnow().isoformat()
+        self._tracker.history_import_last_error = None
         self._attr_available = False
         # Keep native value untouched while unavailable to avoid writing a new 0-state row.
-        await self._entry.runtime_data.store.async_save(self._tracker)
+        await self._entry.runtime_data.store.async_flush_pending(self._tracker)
         self.async_write_ha_state()
+
+    @property
+    def _is_blocked_by_history_import(self) -> bool:
+        """Return whether live source processing must be blocked during import."""
+        return bool(
+            self._tracker.history_import_in_progress
+            or self._is_waiting_for_initial_history_import
+        )
 
     @property
     def _is_waiting_for_initial_history_import(self) -> bool:

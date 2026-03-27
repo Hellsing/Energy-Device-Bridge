@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import threading
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -604,6 +606,17 @@ async def test_failed_import_clears_creation_pending_flag(
     assert tracker is not None
     assert tracker.history_import_last_result == "failed"
     assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
+    assert energy_sensor._tracker.history_import_in_progress is False
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-import-fail-clears-pending_energy"
+    )
+    assert energy_entity_id is not None
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert state.state != STATE_UNAVAILABLE
 
 
 @pytest.mark.asyncio
@@ -662,6 +675,17 @@ async def test_cancelled_import_clears_creation_pending_flag(
     assert tracker.history_import_in_progress is False
     assert tracker.history_import_last_result == "cancelled"
     assert entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, True) is False
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
+    assert energy_sensor._tracker.history_import_in_progress is False
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-import-cancel-clears-pending_energy"
+    )
+    assert energy_entity_id is not None
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert state.state != STATE_UNAVAILABLE
 
 
 @pytest.mark.asyncio
@@ -1381,3 +1405,128 @@ async def test_manual_import_reinitializes_tracker_and_purges_recorder_data(
         ATTR_HISTORY_IMPORT_LAST_SOURCE_ENERGY_VALUE_KWH
     ] == pytest.approx(12.0, abs=1e-6)
     assert tracker.as_dict()[ATTR_HISTORY_IMPORT_LAST_SOURCE_SAMPLE_TS] is not None
+
+
+@pytest.mark.asyncio
+async def test_manual_reinitialize_import_blocks_live_tracking_until_completion(
+    hass: HomeAssistant,
+) -> None:
+    """Manual reinitialize import keeps sensor unavailable and ignores live updates."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        10.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-block-live",
+            CONF_CONSUMER_NAME: "Import Block Live",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    energy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "consumer-import-block-live_energy"
+    )
+    assert energy_entity_id is not None
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 10, 23))
+    source_states = [
+        _MockHistoricalState(
+            state="9.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+        ),
+        _MockHistoricalState(
+            state="12.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+        ),
+    ]
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        # Block import during history read to simulate long-running reinitialize import.
+        read_gate = threading.Event()
+
+        def _waited_state_changes(*_args, **_kwargs):
+            read_gate.wait(timeout=5)
+            return {"sensor.src_energy": source_states}
+
+        with patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            side_effect=_waited_state_changes,
+        ):
+            accepted = await async_request_history_import(
+                hass,
+                entry=entry,
+                trigger="button",
+                reject_if_running=True,
+                reinitialize_before_import=True,
+            )
+            assert accepted
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+            energy_state = hass.states.get(energy_entity_id)
+            assert energy_state is not None
+            assert energy_state.state == STATE_UNAVAILABLE
+            energy_sensor = entry.runtime_data.energy_sensor
+            assert energy_sensor is not None
+            assert energy_sensor._tracker.history_import_in_progress is True
+            assert energy_sensor._tracker.virtual_total_kwh == 0.0
+
+            with patch(
+                "custom_components.energy_device_bridge.sensor.apply_source_sample"
+            ) as live_apply_mock:
+                hass.states.async_set(
+                    "sensor.src_energy",
+                    0.01,
+                    {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+                )
+                hass.states.async_set(
+                    "sensor.src_energy",
+                    0.02,
+                    {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+                )
+                await hass.async_block_till_done()
+                assert live_apply_mock.call_count == 0
+
+            energy_state = hass.states.get(energy_entity_id)
+            assert energy_state is not None
+            assert energy_state.state == STATE_UNAVAILABLE
+            assert energy_sensor._tracker.virtual_total_kwh == 0.0
+
+            read_gate.set()
+            await hass.async_block_till_done()
+
+    final_state = hass.states.get(energy_entity_id)
+    assert final_state is not None
+    assert final_state.state != STATE_UNAVAILABLE
+    assert float(final_state.state) == pytest.approx(3.0, abs=1e-6)
+    final_sensor = entry.runtime_data.energy_sensor
+    assert final_sensor is not None
+    assert final_sensor._tracker.history_import_in_progress is False
