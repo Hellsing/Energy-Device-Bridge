@@ -339,4 +339,8 @@ async def test_unload_cancels_pending_copy_on_create_task(hass) -> None:
 
     release_gate.set()
     await hass.async_block_till_done()
-    assert entry.runtime_data.copy_on_create_task is None
+    assert copy_task.done()
+    assert copy_task.cancelled()
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is not None:
+        assert runtime_data.copy_on_create_task is None
