@@ -336,6 +336,74 @@ def _build_notification_id(entry_id: str) -> str:
     return f"{DOMAIN}_{entry_id}_history_import"
 
 
+def _format_notification_datetime(iso_timestamp: str | None) -> str:
+    """Format tracker timestamps for human-readable notifications."""
+    if not iso_timestamp:
+        return "n/a"
+    parsed = dt_util.parse_datetime(iso_timestamp)
+    if parsed is None:
+        return iso_timestamp
+    localized = dt_util.as_local(dt_util.as_utc(parsed))
+    return localized.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _build_success_notification_message(
+    *,
+    trigger: str,
+    source_entity_id: str,
+    bridge_entity_id: str,
+    period_start_iso: str | None,
+    period_end_iso: str | None,
+    sample_count: int,
+    hourly_rows_imported: int,
+    short_term_rows_imported: int,
+    short_term_rows_skipped: int,
+    retention_limited: bool,
+) -> str:
+    """Build a professional, scannable success summary for persistent notifications."""
+    short_term_line = f"**5-minute rows imported:** {short_term_rows_imported}"
+    if short_term_rows_skipped > 0:
+        short_term_line = (
+            f"{short_term_line} ({short_term_rows_skipped} skipped: unsupported recorder "
+            "short-term import)"
+        )
+
+    total_rows_imported = hourly_rows_imported + short_term_rows_imported
+    return (
+        "## Energy history import complete\n"
+        f"- **Trigger:** `{trigger}`\n"
+        f"- **Source entity:** `{source_entity_id}`\n"
+        f"- **Bridge entity:** `{bridge_entity_id}`\n\n"
+        "### Imported window\n"
+        f"- **Start:** {_format_notification_datetime(period_start_iso)}\n"
+        f"- **End:** {_format_notification_datetime(period_end_iso)}\n\n"
+        "### Processing summary\n"
+        f"- **Samples replayed:** {sample_count}\n"
+        f"- **Hourly rows imported:** {hourly_rows_imported}\n"
+        f"- {short_term_line}\n"
+        f"- **Total rows imported:** {total_rows_imported}\n"
+        "- **Replay mode:** Exact historical replay\n"
+        f"- **Retention limited:** {'yes' if retention_limited else 'no'}"
+    )
+
+
+def _build_failure_notification_message(
+    *,
+    source_entity_id: str,
+    bridge_entity_id: str | None,
+    error: Exception,
+) -> str:
+    """Build a clear and actionable failure summary for persistent notifications."""
+    bridge_value = bridge_entity_id or "unavailable"
+    return (
+        "## Energy history import failed\n"
+        f"- **Source entity:** `{source_entity_id}`\n"
+        f"- **Bridge entity:** `{bridge_value}`\n"
+        f"- **Error:** `{error}`\n\n"
+        "Review Home Assistant logs for full diagnostics."
+    )
+
+
 def _clear_create_pending_option(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Clear create-time import pending flag once import reached a terminal state."""
     if not bool(entry.options.get(CONF_COPY_SOURCE_HISTORY_ON_CREATE_PENDING, False)):
@@ -676,12 +744,18 @@ async def _async_run_import(
             name=entry.title,
             statistic_id=bridge_entity_id,
         )
+        short_term_rows_imported = 0
+        short_term_rows_skipped = 0
         if stats_rows:
             _async_import_statistics(hass, metadata, stats_rows)
         if short_term_rows:
             imported_short_term = _async_import_short_term_statistics(
                 hass, metadata, short_term_rows
             )
+            if imported_short_term:
+                short_term_rows_imported = len(short_term_rows)
+            else:
+                short_term_rows_skipped = len(short_term_rows)
             if not imported_short_term:
                 _LOGGER.debug(
                     "Recorder short-term import unsupported for %s; "
@@ -760,16 +834,17 @@ async def _async_run_import(
                 tracker
             )
 
-        summary = (
-            f"Trigger: {trigger}\n"
-            f"Source entity: {source_entity_id}\n"
-            f"Bridge entity: {bridge_entity_id}\n"
-            f"Imported period start: {tracker.history_import_period_start}\n"
-            f"Imported period end: {tracker.history_import_period_end}\n"
-            f"Rows imported: {tracker.history_import_hours_imported}\n"
-            f"Samples processed: {tracker.history_import_samples_processed}\n"
-            f"Exact replay only: yes\n"
-            f"Retention limited: {'yes' if retention_limited else 'no'}"
+        summary = _build_success_notification_message(
+            trigger=trigger,
+            source_entity_id=source_entity_id,
+            bridge_entity_id=bridge_entity_id,
+            period_start_iso=tracker.history_import_period_start,
+            period_end_iso=tracker.history_import_period_end,
+            sample_count=tracker.history_import_samples_processed,
+            hourly_rows_imported=tracker.history_import_hours_imported,
+            short_term_rows_imported=short_term_rows_imported,
+            short_term_rows_skipped=short_term_rows_skipped,
+            retention_limited=retention_limited,
         )
         persistent_notification.async_create(
             hass,
@@ -802,11 +877,10 @@ async def _async_run_import(
         _clear_create_pending_option(hass, entry)
         persistent_notification.async_create(
             hass,
-            (
-                "Historical import failed.\n\n"
-                f"Source entity: {source_entity_id}\n"
-                f"Bridge entity: {bridge_entity_id}\n"
-                f"Error: {err}"
+            _build_failure_notification_message(
+                source_entity_id=source_entity_id,
+                bridge_entity_id=bridge_entity_id,
+                error=err,
             ),
             title="Energy Device Bridge history import failed",
             notification_id=_build_notification_id(entry.entry_id),

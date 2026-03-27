@@ -31,6 +31,8 @@ from custom_components.energy_device_bridge.const import (
     ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
 )
 from custom_components.energy_device_bridge.history_import import (
+    _build_failure_notification_message,
+    _build_success_notification_message,
     async_request_history_import,
 )
 from custom_components.energy_device_bridge.models import EnergyTrackerState
@@ -42,6 +44,59 @@ class _MockHistoricalState:
     attributes: dict
     last_updated: datetime
     last_changed: datetime
+
+
+def test_success_notification_includes_hourly_and_short_term_rows() -> None:
+    """Success notification should summarize all imported row types."""
+    message = _build_success_notification_message(
+        trigger="service",
+        source_entity_id="sensor.source_energy",
+        bridge_entity_id="sensor.bridge_energy",
+        period_start_iso=dt_util.as_utc(datetime(2024, 1, 1, 9, 0)).isoformat(),
+        period_end_iso=dt_util.as_utc(datetime(2024, 1, 1, 10, 0)).isoformat(),
+        sample_count=12,
+        hourly_rows_imported=2,
+        short_term_rows_imported=8,
+        short_term_rows_skipped=0,
+        retention_limited=False,
+    )
+    assert "Hourly rows imported:** 2" in message
+    assert "5-minute rows imported:** 8" in message
+    assert "Total rows imported:** 10" in message
+    assert "Retention limited:** no" in message
+
+
+def test_success_notification_reports_skipped_short_term_rows() -> None:
+    """Success notification should explain skipped short-term rows."""
+    message = _build_success_notification_message(
+        trigger="service",
+        source_entity_id="sensor.source_energy",
+        bridge_entity_id="sensor.bridge_energy",
+        period_start_iso=None,
+        period_end_iso=None,
+        sample_count=6,
+        hourly_rows_imported=1,
+        short_term_rows_imported=0,
+        short_term_rows_skipped=4,
+        retention_limited=True,
+    )
+    assert "5-minute rows imported:** 0 (4 skipped: unsupported recorder short-term import)" in message
+    assert "Total rows imported:** 1" in message
+    assert "Retention limited:** yes" in message
+
+
+def test_failure_notification_is_structured_and_actionable() -> None:
+    """Failure notification should include entities, error, and next step."""
+    message = _build_failure_notification_message(
+        source_entity_id="sensor.source_energy",
+        bridge_entity_id=None,
+        error=RuntimeError("boom"),
+    )
+    assert "Energy history import failed" in message
+    assert "Source entity:** `sensor.source_energy`" in message
+    assert "Bridge entity:** `unavailable`" in message
+    assert "Error:** `boom`" in message
+    assert "Review Home Assistant logs for full diagnostics." in message
 
 
 @pytest.mark.asyncio
