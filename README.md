@@ -98,7 +98,7 @@ History import:
 ## Troubleshooting and limitations
 
 - Source entities must be `sensor` entities with supported units (`Wh`/`kWh`, optional `W`/`kW`).
-- If the source energy `state_class` is not `total` or `total_increasing`, the integration raises a Repair issue.
+- Recommended source energy `state_class` is `total` or `total_increasing`; missing `state_class` is tolerated, while other values raise a Repair issue.
 - If source sensors are missing or invalid, check **Settings > Repairs** for actionable warnings.
 - One bridge entry maps to one source energy sensor and an optional source power sensor.
 - Reauthentication is not applicable (no external account or token auth).

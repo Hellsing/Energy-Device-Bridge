@@ -268,6 +268,8 @@ def _validate_user_input(
         if not _is_energy_unit_supported(energy_unit):
             _set_error(CONF_SOURCE_ENERGY_ENTITY_ID, "invalid_energy_unit")
         state_class = energy_state.attributes.get("state_class")
+        # Keep tolerant runtime behavior: missing state_class is accepted,
+        # but incompatible values still produce a validation error.
         if state_class not in (
             SensorStateClass.TOTAL,
             SensorStateClass.TOTAL_INCREASING,
@@ -396,6 +398,14 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlowWithConfigEntry):
                 selected_copy_source_history_on_create = bool(
                     user_input[CONF_COPY_SOURCE_HISTORY_ON_CREATE]
                 )
+                updated_options = {
+                    **config_entry.options,
+                    CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
+                    CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
+                    CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
+                        selected_copy_source_history_on_create
+                    ),
+                }
                 self.hass.config_entries.async_update_entry(
                     config_entry,
                     title=result.validated_data[CONF_CONSUMER_NAME],
@@ -403,18 +413,12 @@ class EnergyDeviceBridgeOptionsFlow(OptionsFlowWithConfigEntry):
                         CONF_CONSUMER_UUID: config_entry.data[CONF_CONSUMER_UUID],
                         **result.validated_data,
                     },
+                    options=updated_options,
                 )
                 await self.hass.config_entries.async_reload(config_entry.entry_id)
                 return self.async_create_entry(
                     title="",
-                    data={
-                        **config_entry.options,
-                        CONF_ZERO_DROP_POLICY: selected_zero_drop_policy,
-                        CONF_NOTIFY_ON_LOWER_NON_ZERO: selected_notify_on_lower_non_zero,
-                        CONF_COPY_SOURCE_HISTORY_ON_CREATE: (
-                            selected_copy_source_history_on_create
-                        ),
-                    },
+                    data=updated_options,
                 )
             errors = result.errors
 

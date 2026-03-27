@@ -262,6 +262,21 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
 
     entity_description = _ENERGY_DESCRIPTION
     _attr_suggested_display_precision = 3
+    _unrecorded_attributes = frozenset(
+        {
+            ATTR_LAST_SOURCE_ENTITY_ID,
+            ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
+            ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
+            ATTR_IGNORED_NEGATIVE_DELTA_COUNT,
+            ATTR_RESET_DETECTED_COUNT,
+            ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
+            ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
+            ATTR_LAST_ZERO_DROP_AT,
+            ATTR_LOWER_VALUE_COUNT,
+            ATTR_ZERO_DROP_COUNT,
+            ATTR_LAST_LOWER_VALUE_EVENT,
+        }
+    )
 
     def __init__(self, entry: EnergyDeviceBridgeConfigEntry) -> None:
         super().__init__(entry.runtime_data.consumer)
@@ -365,6 +380,8 @@ class EnergyDeviceBridgeEnergySensor(EnergyDeviceBridgeSensorBase, RestoreSensor
 
         source_unit = source_state.attributes.get("unit_of_measurement")
         state_class = source_state.attributes.get("state_class")
+        # Missing state_class is tolerated for compatibility, while incompatible
+        # values still surface as a runtime Repair issue.
         self._entry.runtime_data.set_issue(
             self.hass,
             ISSUE_ENERGY_STATE_CLASS_INVALID,

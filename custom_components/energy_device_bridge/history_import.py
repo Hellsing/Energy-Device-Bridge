@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+from functools import partial
 import logging
 from time import monotonic
 from typing import Any
@@ -118,6 +119,44 @@ def _async_clear_statistics(hass: HomeAssistant, statistic_ids: list[str]) -> No
     from homeassistant.components.recorder import get_instance
 
     get_instance(hass).async_clear_statistics(statistic_ids)
+
+
+def _last_valid_source_kwh_before(
+    hass: HomeAssistant,
+    *,
+    source_entity_id: str,
+    before_time: datetime,
+) -> float | None:
+    """Return latest valid source kWh sample strictly before an import window."""
+    if before_time <= _EPOCH_UTC:
+        return None
+    history_data = _state_changes_during_period(
+        hass,
+        _EPOCH_UTC,
+        before_time,
+        source_entity_id,
+    )
+    source_states = history_data.get(source_entity_id, [])
+    if not source_states:
+        return None
+
+    sorted_states = sorted(
+        list(source_states),
+        key=lambda state: dt_util.as_utc(
+            state.last_updated or state.last_changed or dt_util.utcnow()
+        ),
+        reverse=True,
+    )
+    for source_state in sorted_states:
+        source_numeric = _parse_numeric(source_state.state)
+        if source_numeric is None:
+            continue
+        source_kwh = _convert_energy_to_kwh(
+            source_numeric, source_state.attributes.get("unit_of_measurement")
+        )
+        if source_kwh is not None:
+            return source_kwh
+    return None
 
 
 def _supports_statistics_metadata_field(field_name: str) -> bool:
@@ -516,6 +555,21 @@ async def _async_run_import(
                         latest_rows[-1]["start"]
                     )
                     import_start_hour = last_row_start + timedelta(hours=1)
+
+            if tracker.last_source_entity_id == source_entity_id:
+                last_source_before_window = await hass.async_add_executor_job(
+                    partial(
+                        _last_valid_source_kwh_before,
+                        hass,
+                        source_entity_id=source_entity_id,
+                        before_time=import_start_hour,
+                    )
+                )
+                if last_source_before_window is not None:
+                    replay_tracker.last_source_entity_id = source_entity_id
+                    replay_tracker.last_source_energy_value_kwh = (
+                        last_source_before_window
+                    )
         elif not reinitialize_before_import:
             await _async_clear_statistics_and_wait(hass, bridge_entity_id)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import UnitOfEnergy, UnitOfPower
@@ -207,6 +208,70 @@ async def test_options_flow_updates_entry_from_gear_path(hass: HomeAssistant) ->
     )
     assert entry.options[CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
     assert entry.options[CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
+
+
+@pytest.mark.asyncio
+async def test_options_flow_reload_uses_newly_saved_options(hass: HomeAssistant) -> None:
+    """Reload should happen once and observe the just-saved options."""
+    await _init_integration(hass)
+    hass.states.async_set(
+        "sensor.e1", 2, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR}
+    )
+    hass.states.async_set(
+        "sensor.e2", 3, {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR}
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-reload-order",
+            CONF_CONSUMER_NAME: "Reload Order",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e1",
+        },
+        options={
+            CONF_ZERO_DROP_POLICY: DEFAULT_ZERO_DROP_POLICY,
+            CONF_NOTIFY_ON_LOWER_NON_ZERO: DEFAULT_NOTIFY_ON_LOWER_NON_ZERO,
+            CONF_COPY_SOURCE_HISTORY_ON_CREATE: False,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    observed_options_at_reload: list[dict] = []
+
+    async def _reload_with_capture(entry_id: str) -> bool:
+        observed_options_at_reload.append(dict(entry.options))
+        return True
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        side_effect=_reload_with_capture,
+    ) as reload_mock:
+        done = await hass.config_entries.options.async_configure(
+            flow["flow_id"],
+            {
+                CONF_CONSUMER_NAME: "Reload Order Updated",
+                CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.e2",
+                CONF_ZERO_DROP_POLICY: ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO,
+                CONF_NOTIFY_ON_LOWER_NON_ZERO: True,
+                CONF_COPY_SOURCE_HISTORY_ON_CREATE: True,
+            },
+        )
+        assert done["type"] is FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+    assert reload_mock.call_count == 1
+    assert len(observed_options_at_reload) == 1
+    assert (
+        observed_options_at_reload[0][CONF_ZERO_DROP_POLICY]
+        == ZERO_DROP_POLICY_IGNORE_ZERO_UNTIL_NON_ZERO
+    )
+    assert observed_options_at_reload[0][CONF_NOTIFY_ON_LOWER_NON_ZERO] is True
+    assert observed_options_at_reload[0][CONF_COPY_SOURCE_HISTORY_ON_CREATE] is True
 
 
 @pytest.mark.asyncio

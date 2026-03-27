@@ -19,7 +19,15 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.energy_device_bridge.const import (
     ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP,
     ATTR_LAST_SOURCE_ENERGY_VALUE_KWH,
+    ATTR_LAST_SOURCE_ENTITY_ID,
+    ATTR_LAST_VALID_SOURCE_SAMPLE_TS,
+    ATTR_LAST_ZERO_DROP_AT,
+    ATTR_CURRENT_NORMALIZED_SOURCE_UNIT,
+    ATTR_IGNORED_NEGATIVE_DELTA_COUNT,
+    ATTR_RESET_DETECTED_COUNT,
     ATTR_LOWER_VALUE_COUNT,
+    ATTR_ZERO_DROP_COUNT,
+    ATTR_LAST_LOWER_VALUE_EVENT,
     ATTR_VALUE_KWH,
     CONF_CONSUMER_NAME,
     CONF_CONSUMER_UUID,
@@ -351,6 +359,30 @@ async def test_energy_sensor_statistics_metadata_and_monotonicity(
         assert _state_float(hass, energy_entity_id) == pytest.approx(
             total_value, abs=1e-6
         )
+
+
+async def test_energy_sensor_debug_attributes_are_marked_unrecorded(
+    hass: HomeAssistant,
+) -> None:
+    """Noisy debug attributes should remain visible but not recorder-persisted."""
+    entry = await _setup_entry(hass)
+    energy_sensor = entry.runtime_data.energy_sensor
+    assert energy_sensor is not None
+    assert ATTR_LAST_SOURCE_ENTITY_ID in energy_sensor.extra_state_attributes
+    assert ATTR_LAST_VALID_SOURCE_SAMPLE_TS in energy_sensor.extra_state_attributes
+    assert ATTR_LAST_SOURCE_ENTITY_ID in energy_sensor._unrecorded_attributes
+    assert ATTR_LAST_SOURCE_ENERGY_VALUE_KWH in energy_sensor._unrecorded_attributes
+    assert ATTR_LAST_VALID_SOURCE_SAMPLE_TS in energy_sensor._unrecorded_attributes
+    assert ATTR_IGNORED_NEGATIVE_DELTA_COUNT in energy_sensor._unrecorded_attributes
+    assert ATTR_RESET_DETECTED_COUNT in energy_sensor._unrecorded_attributes
+    assert ATTR_CURRENT_NORMALIZED_SOURCE_UNIT in energy_sensor._unrecorded_attributes
+    assert (
+        ATTR_AWAITING_NON_ZERO_AFTER_ZERO_DROP in energy_sensor._unrecorded_attributes
+    )
+    assert ATTR_LAST_ZERO_DROP_AT in energy_sensor._unrecorded_attributes
+    assert ATTR_LOWER_VALUE_COUNT in energy_sensor._unrecorded_attributes
+    assert ATTR_ZERO_DROP_COUNT in energy_sensor._unrecorded_attributes
+    assert ATTR_LAST_LOWER_VALUE_EVENT in energy_sensor._unrecorded_attributes
 
 
 async def test_entity_names_are_translation_backed(hass: HomeAssistant) -> None:

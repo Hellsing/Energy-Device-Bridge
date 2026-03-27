@@ -708,6 +708,131 @@ async def test_first_live_update_after_import_is_continuous_with_large_source_va
 
 
 @pytest.mark.asyncio
+async def test_incremental_import_preserves_delta_from_previous_source_baseline(
+    hass: HomeAssistant,
+) -> None:
+    """Incremental import keeps continuity from last imported source reading."""
+    hass.states.async_set(
+        "sensor.src_energy",
+        112.0,
+        {"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONSUMER_UUID: "consumer-import-incremental-continuity",
+            CONF_CONSUMER_NAME: "Import Incremental Continuity",
+            CONF_SOURCE_POWER_ENTITY_ID: None,
+            CONF_SOURCE_ENERGY_ENTITY_ID: "sensor.src_energy",
+        },
+        options={"copy_source_history_on_create": False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    now = dt_util.as_utc(datetime(2024, 1, 1, 12, 23))
+    initial_states = [
+        _MockHistoricalState(
+            state="100.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 9, 10)),
+        ),
+        _MockHistoricalState(
+            state="110.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 10, 10)),
+        ),
+    ]
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_clear_statistics_and_wait",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            return_value={"sensor.src_energy": initial_states},
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+
+    incremental_states = [
+        _MockHistoricalState(
+            state="111.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 5)),
+        ),
+        _MockHistoricalState(
+            state="112.0",
+            attributes={"unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR},
+            last_updated=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+            last_changed=dt_util.as_utc(datetime(2024, 1, 1, 11, 20)),
+        ),
+    ]
+
+    def _mock_last_statistics(
+        _hass: HomeAssistant,
+        _number_of_stats: int,
+        statistic_id: str,
+        _convert_units: bool,
+        _types: set[str],
+    ) -> dict[str, list[dict]]:
+        return {statistic_id: [{"sum": 10.0}]}
+
+    with (
+        patch(
+            "custom_components.energy_device_bridge.history_import.dt_util.utcnow",
+            return_value=now,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._get_last_statistics",
+            side_effect=_mock_last_statistics,
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._state_changes_during_period",
+            side_effect=[
+                {"sensor.src_energy": initial_states},
+                {"sensor.src_energy": incremental_states},
+            ],
+        ),
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_statistics"
+        ) as import_stats_mock,
+        patch(
+            "custom_components.energy_device_bridge.history_import._async_import_short_term_statistics",
+            return_value=True,
+        ),
+    ):
+        accepted = await async_request_history_import(
+            hass, entry=entry, trigger="service", reject_if_running=True
+        )
+        assert accepted
+        await hass.async_block_till_done()
+        rows = import_stats_mock.call_args.args[2]
+        assert len(rows) == 1
+        # 10.0 existing total + (111-110) + (112-111) == 12.0
+        assert rows[0]["sum"] == pytest.approx(12.0, abs=1e-6)
+
+
+@pytest.mark.asyncio
 async def test_reset_handling_remains_correct_after_import(
     hass: HomeAssistant,
 ) -> None:
